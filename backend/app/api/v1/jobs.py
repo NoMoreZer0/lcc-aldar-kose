@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ... import crud, gpu_client, schemas
-from ...database import get_db
+from ...database import SessionLocal, get_db
 
 router = APIRouter()
+GPU_CALLBACK_BASE = os.getenv("GPU_CALLBACK_BASE", "http://localhost:9000")
+logger = logging.getLogger(__name__)
 
 
 @router.post("/chats/{chat_id}/jobs", response_model=schemas.JobRead, status_code=201)
 async def create_job(
     chat_id: str,
     job_in: schemas.JobCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     try:
@@ -24,7 +27,8 @@ async def create_job(
     except crud.ChatNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    background_tasks.add_task(process_job, str(job.id), job_in.prompt, job_in.num_frames, db)
+    logger.info("Scheduling GPU generation for job %s (chat %s)", job.id, chat_id)
+    asyncio.create_task(process_job(str(job.id), job_in.prompt, job_in.num_frames))
 
     return job
 
@@ -49,41 +53,45 @@ def list_jobs(chat_id: str, db: Session = Depends(get_db)):
     return jobs
 
 
-async def process_job(job_id: str, prompt: str, num_frames: int, db: Session):
+@router.patch("/jobs/{job_id}", response_model=schemas.JobRead)
+def update_job(
+    job_id: str,
+    job_update: schemas.JobUpdate,
+    db: Session = Depends(get_db),
+):
+    try:
+        job = crud.update_job(db, job_id=job_id, job_update=job_update)
+    except crud.JobNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return job
+
+
+async def process_job(job_id: str, prompt: str, num_frames: int):
+    db = SessionLocal()
     try:
         job_update = schemas.JobUpdate(status="processing", progress=10)
         crud.update_job(db, job_id=job_id, job_update=job_update)
 
-        result = await gpu_client.submit_job(prompt=prompt, num_frames=num_frames)
+        callback_url = GPU_CALLBACK_BASE.rstrip("/")
 
-        gpu_job_id = result.get("job_id")
-        if not gpu_job_id:
-            raise ValueError("GPU service did not return job_id")
+        logger.info(
+            "Submitting job %s to GPU service at %s (callback %s)",
+            job_id,
+            gpu_client.GPU_SERVICE_URL,
+            callback_url,
+        )
+        await gpu_client.submit_job(
+            prompt=prompt,
+            num_frames=num_frames,
+            job_id=job_id,
+            callback_url=callback_url,
+        )
 
-        while True:
-            await asyncio.sleep(2)
-            status_result = await gpu_client.get_status(gpu_job_id)
-
-            progress = status_result.get("progress", 0)
-            status = status_result.get("status", "processing")
-
-            job_update = schemas.JobUpdate(progress=progress)
-
-            if status == "completed":
-                result_urls = status_result.get("result_urls", [])
-                job_update.status = "completed"
-                job_update.result_urls = result_urls
-                crud.update_job(db, job_id=job_id, job_update=job_update)
-                break
-            elif status == "failed":
-                error_message = status_result.get("error_message", "Unknown error")
-                job_update.status = "failed"
-                job_update.error_message = error_message
-                crud.update_job(db, job_id=job_id, job_update=job_update)
-                break
-            else:
-                crud.update_job(db, job_id=job_id, job_update=job_update)
+        logger.info("Job %s successfully handed off to GPU service", job_id)
 
     except Exception as e:
         job_update = schemas.JobUpdate(status="failed", error_message=str(e))
         crud.update_job(db, job_id=job_id, job_update=job_update)
+        logger.exception("GPU job %s failed to submit", job_id)
+    finally:
+        db.close()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from .database import init_database
 
 def create_application() -> FastAPI:
     load_dotenv()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
     app = FastAPI(title="Aldar Kose API", version="0.1.0")
 
     app.add_middleware(
