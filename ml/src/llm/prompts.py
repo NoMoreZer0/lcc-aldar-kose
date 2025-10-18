@@ -5,14 +5,15 @@ Strong requirements:
 - Keep Aldar Köse’s identity CONSTANT across all frames:
   • Middle-aged Kazakh trickster • traditional chapan robe • kalpak hat • gentle, knowing smile
   • rooted in Kazakh green steppe heritage, folk textiles, and oral storytelling traditions
-- Keep the ENVIRONMENT CONSTANT across the entire storyboard:
-  • same green steppe encampment with a central yurt, glowing campfire, tethered horse, low tea table, embroidered carpets
-  • static props (yurt, campfire, horse tether, tea set, saddle bags, distant mountains) stay present every frame
-  • Only dynamic elements (people, animals, gestures, wind, sun position, handheld props) may move or change emphasis
+- Base environment (do NOT rewrite fully each frame; reference it succinctly): twilight Kazakh steppe encampment with central felt yurt,
+  steady campfire, tethered horse, low tea table, embroidered carpets, braided saddle bags, distant Tien Shan mountains.
+- Static props above stay present every frame; do not move or remove them.
+- Only dynamic elements (people, animals, gestures, wind, sun position, handheld props) may move or change emphasis.
 - Each frame must push the story forward (setup → rising action → twist/climax → resolution).
 - Each NEW frame introduces at least ONE meaningful dynamic change (interaction, expression, prop usage, animal behavior,
   storytelling beat) while the environment and static objects stay anchored.
-- Prompts must be concise (aim ≤ 65 tokens per encoder) and free of tokens like <|endoftext|>.
+- Prompts must be concise (aim ≤ 60 tokens) and free of tokens like <|endoftext|>. Start each prompt with a short environment tag such as
+  "Kazakh steppe encampment; static props intact" before describing the dynamic change.
 - Safety: no violence glorification; respectful portrayals; no ethnic caricature.
 
 Return only valid JSON as instructed — no Markdown, no commentary."""
@@ -27,7 +28,7 @@ Return JSON:
 {{
   "title": "...",
   "theme": "...",
-  "environment_blueprint": "Single Kazakh green steppe encampment at golden hour with a central yurt, steady campfire, tethered horse, low tea table, embroidered carpets, distant Tien Shan mountains. This environment and these static props stay visible every frame.",
+  "environment_blueprint": "Kazakh steppe encampment at twilight; yurt, campfire, tethered horse, tea table, saddle bags, distant mountains remain constant every frame.",
   "beats": [
      {{"id": 1, "beat": "setup", "goal": "...", "conflict": "..."}},
      {{"id": 2, "beat": "rising_action", "turn": "..."}},
@@ -35,14 +36,14 @@ Return JSON:
      {{"id": {num_frames}, "beat": "resolution", "outcome": "..."}}
   ],
   "supporting_cast_bank": ["greedy merchant", "shepherd", "wise elder", "musician", "child apprentice", "nomad rider"],
-  "location_bank": ["single green steppe encampment (unchanged across frames)"],
+  "location_bank": ["same steppe encampment (unchanged across frames)"],
   "prop_bank": ["dombra lute", "embroidered saddlebag", "tea bowl", "horse rope", "story scroll", "coin pouch"]
 }}"""
 
 # 2) Canonical identity tokens you can inject into each frame’s prompt.
 CHARACTER_BIBLE = {
     "aldar_token": "[AldarMain]",  # include this literal token in every prompt for identity locking
-    "canonical_description": "Aldar Köse [AldarMain], middle-aged Kazakh trickster in an indigo embroidered chapan robe and white kalpak hat, gentle knowing smile, carrying a carved wooden staff"
+    "canonical_description": "Aldar Köse [AldarMain], middle-aged Kazakh trickster, indigo embroidered chapan, white kalpak, gentle knowing smile, carved wooden staff"
 }
 
 SHOT_PROMPT_TEMPLATE = """You are given:
@@ -58,7 +59,8 @@ Hard rules:
 - Each shot MUST introduce at least ONE new dynamic element compared to previous shots:
   (supporting character action, emotional beat, gesture, wind movement, animal behavior, use of a prop, storytelling flourish) while the static set stays fixed.
 - Vary camera_direction and style_tag across frames (no immediate repeats).
-- Keep image prompt ≤ ~65 tokens; include camera, lens, composition, lighting, mood; avoid filler and special tokens.
+- Keep each prompt < 60 tokens. Begin with a compact environment tag like "Kazakh steppe encampment; static props intact."
+- After the tag, describe ONLY the dynamic change, the cinematic view (camera, lens, composition), lighting shift, and mood.
 - Highlight Kazakh folk culture details, textiles, motifs, instruments, and oral storytelling energy.
 
 Return a JSON array of length {num_frames}. Each item has:
@@ -94,12 +96,12 @@ FALLBACK_CAMERA_DIRECTIONS = [
 ]
 
 FALLBACK_STYLE_TAGS = [
-    "painterly realism with Kazakh folk motifs",
-    "golden hour cinematic over the Kazakh green steppe",
-    "moonlit mystery above the yurt encampment",
-    "crisp dawn light on Kazakh grasslands",
-    "warm hearth glow with embroidered textiles",
-    "wind-swept green steppe folklore illustration",
+    "painterly realism, Kazakh folk motifs",
+    "golden hour Kazakh steppe cinematic",
+    "moonlit yurt camp mystery",
+    "crisp dawn Kazakh grasslands",
+    "warm hearth glow, embroidered textiles",
+    "wind-swept steppe folklore illustration",
 ]
 
 # --- Helpers you can use after LLM returns JSON ---
