@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from ..diffusion.pipeline import StoryboardGenerationPipeline
@@ -18,7 +19,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=Path("ml/configs/default.yaml"), help="Path to config YAML.")
     parser.add_argument("--output", type=Path, default=None, help="Output directory.")
     parser.add_argument("--seed", type=int, default=None, help="Base random seed.")
-    parser.add_argument("--use_ip_adapter", action="store_true", default=True, help="Enable IP-Adapter consistency.")
     parser.add_argument("--use_controlnet", action="store_true", default=True, help="Enable ControlNet/T2I adapters.")
     parser.add_argument("--zip", action="store_true", help="Package outputs into a zip archive.")
     return parser.parse_args()
@@ -27,6 +27,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     logger = configure_logging()
+    
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.warning("OPENAI_API_KEY not set; planner will use deterministic fallback. Plans may repeat for identical loglines.")
 
     config = ConfigModel.from_path(args.config)
     if hasattr(config, "model_dump"):
@@ -37,7 +40,7 @@ def main() -> None:
     base_seed = set_seed(args.seed)
 
     logger.info("Planning %d shots with base seed %s", args.frames, base_seed)
-    shots = plan_shots(args.logline, n_frames=args.frames)
+    shots = plan_shots(args.logline, n_frames=args.frames, require_openai=args.require_openai)
 
     run_id = io_utils.default_run_id(prefix="storyboard")
     output_dir = args.output or Path("ml/outputs") / run_id
@@ -47,8 +50,7 @@ def main() -> None:
         logline=args.logline,
         shots=shots,
         output_dir=output_dir,
-        use_ip_adapter=args.use_ip_adapter or config.model.get("use_ip_adapter", False),
-        use_controlnet=args.use_controlnet or config.model.get("use_controlnet", False),
+        use_controlnet=args.use_controlnet or config.model.get("use_controlnet", True),
         base_seed=base_seed,
     )
 

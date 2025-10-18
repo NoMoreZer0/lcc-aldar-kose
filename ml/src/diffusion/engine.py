@@ -34,7 +34,6 @@ class EngineConfig:
     width: int = 1024
     steps: int = 30
     guidance: float = 7.5
-    use_ip_adapter: bool = True
     use_controlnet: bool = True
     negative_prompt: Optional[str] = None
 

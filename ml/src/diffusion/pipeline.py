@@ -12,6 +12,7 @@ from ..utils.vision import crop_center
 from .controlnet import ControlNetManager
 from .engine import SDXLEngine
 from .latent_hooks import LatentHookManager
+from ..consistory.consistory import ConsiStoryGenerator, ConsiStoryParams
 
 
 class StoryboardGenerationPipeline:
@@ -68,7 +69,6 @@ class StoryboardGenerationPipeline:
         logline: str,
         shots: List[Shot],
         output_dir: Path,
-        use_ip_adapter: bool = True,
         use_controlnet: bool = True,
         base_seed: int = 12345,
     ) -> StoryboardIndex:
@@ -77,6 +77,55 @@ class StoryboardGenerationPipeline:
         previous_image = None
         frames: List[FrameEntry] = []
 
+        # Check if ConsiStory integration is enabled
+        if self.config.get("consistency", {}).get("use_consistory", False):
+            self.logger.info("Using ConsiStory for consistent multi-frame generation.")
+            prompts = [shot.prompt for shot in shots]
+            params = ConsiStoryParams(
+                model_id=self.config.get("model", {}).get("model_id", "stabilityai/stable-diffusion-xl-base-1.0"),
+                width=self.config.get("model", {}).get("width", 1024),
+                height=self.config.get("model", {}).get("height", 1024),
+                steps=self.config.get("model", {}).get("steps", 30),
+                guidance=self.config.get("model", {}).get("guidance", 7.0),
+                seed=base_seed,
+                consistency_strength=self.config.get("consistency", {}).get("strength", 0.6),
+                self_keep_alpha=self.config.get("consistency", {}).get("self_keep_alpha", 0.7),
+                dropout=self.config.get("consistency", {}).get("dropout", 0.1),
+                subject_token_top_p=self.config.get("consistency", {}).get("subject_token_top_p", 0.15),
+                subject_patch_top_p=self.config.get("consistency", {}).get("subject_patch_top_p", 0.3),
+                feature_injection_weight=self.config.get("consistency", {}).get("feature_injection_weight", 0.5),
+                max_patches_for_correspondence=self.config.get("consistency", {}).get("max_patches_for_correspondence", 64),
+                attn_save_dir=self.config.get("consistency", {}).get("attn_save_dir", None),
+            )
+            gen = ConsiStoryGenerator(params, logger=self.logger)
+            images = gen.generate_frames(prompts)
+
+            for i, (shot, img) in enumerate(zip(shots, images)):
+                frame_filename = f"frame_{shot.frame_id:02d}.png"
+                io_utils.save_image(img, output_dir / frame_filename)
+                frames.append(
+                    FrameEntry(
+                        frame_id=shot.frame_id,
+                        filename=frame_filename,
+                        caption=shot.caption,
+                        prompt=shot.prompt,
+                        seed=base_seed + i,
+                        control=FrameControl(),
+                        identity_ref=IdentityRef(used=True, type="consistory"),
+                    )
+                )
+            metrics = self.evaluator.evaluate_sequence(output_dir)
+            payload = StoryboardIndex(
+                logline=logline,
+                run_id=output_dir.name,
+                frames=frames,
+                metrics=metrics,
+                model={"base": "SDXL", "adapters": ["consistory"]},
+                timestamps={"started": started, "finished": io_utils.timestamp()},
+            )
+            return payload
+
+        # Default per-frame generation
         for index, shot in enumerate(shots):
             frame_seed = self._frame_seed(base_seed, index)
 

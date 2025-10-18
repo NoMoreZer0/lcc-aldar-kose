@@ -33,8 +33,7 @@ def test_pipeline_smoke(tmp_path, monkeypatch):
 
     config_model = ConfigModel.from_path(config_path)
     config = config_model.model_dump() if hasattr(config_model, "model_dump") else config_model.dict()
-    config["model"]["use_ip_adapter"] = False
-    config["model"]["use_controlnet"] = False
+    config["model"]["use_controlnet"] = True
     config["_engine"] = DummyEngine()
     config["_evaluator"] = DummyEvaluator()
 
@@ -48,8 +47,7 @@ def test_pipeline_smoke(tmp_path, monkeypatch):
         logline="Test logline.",
         shots=shots,
         output_dir=output_dir,
-        use_ip_adapter=False,
-        use_controlnet=False,
+        use_controlnet=True,
         base_seed=42,
     )
 
