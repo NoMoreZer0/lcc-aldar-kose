@@ -18,10 +18,13 @@ import httpx
 from fastapi import BackgroundTasks, FastAPI
 from pydantic import BaseModel, Field
 
-# Ensure local src package is importable when running `python service.py`
+# Ensure project packages are importable when running `python service.py`
 CURRENT_DIR = Path(__file__).parent
-if str(CURRENT_DIR) not in sys.path:
-    sys.path.insert(0, str(CURRENT_DIR))
+PROJECT_ROOT = CURRENT_DIR.parent
+for path in (CURRENT_DIR, PROJECT_ROOT):
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
 
 from src.diffusion.pipeline import StoryboardGenerationPipeline
 from src.llm.planner import plan_shots
