@@ -18,8 +18,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=Path("ml/configs/default.yaml"), help="Path to config YAML.")
     parser.add_argument("--output", type=Path, default=None, help="Output directory.")
     parser.add_argument("--seed", type=int, default=None, help="Base random seed.")
-    parser.add_argument("--use_ip_adapter", action="store_true", default=False, help="Enable IP-Adapter consistency.")
-    parser.add_argument("--use_controlnet", action="store_true", default=False, help="Enable ControlNet/T2I adapters.")
+    parser.add_argument("--use_ip_adapter", action="store_true", default=True, help="Enable IP-Adapter consistency.")
+    parser.add_argument("--use_controlnet", action="store_true", default=True, help="Enable ControlNet/T2I adapters.")
     parser.add_argument("--zip", action="store_true", help="Package outputs into a zip archive.")
     return parser.parse_args()
 

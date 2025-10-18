@@ -11,7 +11,6 @@ from ..utils.schema import FrameControl, FrameEntry, IdentityRef, Shot, Storyboa
 from ..utils.vision import crop_center
 from .controlnet import ControlNetManager
 from .engine import SDXLEngine
-from .ip_adapter import IPAdapterManager
 from .latent_hooks import LatentHookManager
 
 
@@ -31,15 +30,6 @@ class StoryboardGenerationPipeline:
         self.engine = engine or SDXLEngine(model_cfg, logger=self.logger)
         self.latent_hooks = LatentHookManager(consistency_cfg, logger=self.logger)
 
-        self.ip_manager = (
-            IPAdapterManager(
-                self.engine.txt2img,
-                config=model_cfg.get("ip_adapter", {}),
-                logger=self.logger,
-            )
-            if model_cfg.get("use_ip_adapter", True)
-            else None
-        )
         self.control_manager = (
             ControlNetManager(
                 self.engine.device,
@@ -90,58 +80,46 @@ class StoryboardGenerationPipeline:
         for index, shot in enumerate(shots):
             frame_seed = self._frame_seed(base_seed, index)
 
-            ip_kwargs = {}
-            identity_used = False
-            use_img2img = False
-            if use_ip_adapter and previous_image is not None and self.ip_manager is not None:
-                ip_kwargs = self.ip_manager.get_kwargs(previous_image)
-                identity_used = bool(ip_kwargs)
-                use_img2img = identity_used
-
+            # ControlNet for structural/compositional guidance only - no img2img
+            # Identity consistency relies on consistent character descriptions in prompts
             control_kwargs: Dict[str, Any] = {}
             control_flags = FrameControl()
-            if use_controlnet and previous_image is not None and self.control_manager is not None:
+
+            if use_controlnet and self.control_manager is not None and previous_image is not None:
                 control_maps, control_flags = self._compute_control_maps(
                     previous_image,
-                    {"depth": True, "pose": True, "edges": True},
+                    {
+                        "depth": self.config.get("consistency", {}).get("controlnet_use", {}).get("depth", False),
+                        "pose": self.config.get("consistency", {}).get("controlnet_use", {}).get("pose", False),
+                        "edges": self.config.get("consistency", {}).get("controlnet_use", {}).get("edges", True),
+                    },
                 )
                 if control_maps:
                     control_images = [img for _, img in control_maps]
-                    control_strength = self.config.get("consistency", {}).get("controlnet_weight", 0.9)
-                    controlnet_modules = self.control_manager.get_controlnets(
-                        control_flags.depth,
-                        control_flags.pose,
-                        control_flags.edges,
-                    )
-                    if controlnet_modules:
-                        scale_value: Any
+                    nets = self.control_manager.get_controlnets(control_flags.depth, control_flags.pose, control_flags.edges)
+                    if nets:
+                        # Light ControlNet conditioning for loose compositional guidance
+                        # Allows variation while maintaining general scene structure
+                        strength_cfg = self.config.get("consistency", {}).get("controlnet_weight", 0.3)
                         if len(control_images) == 1:
-                            scale_value = control_strength
+                            scale_value = min(strength_cfg, 0.3)
                         else:
-                            scale_value = [control_strength] * len(control_images)
-                        control_kwargs = {
-                            "control_images": control_images,
-                            "controlnet_conditioning_scale": scale_value,
-                        }
-                        self.engine.set_controlnet(controlnet_modules)
-                        use_img2img = True
+                            per_map = min(strength_cfg, 0.2)
+                            scale_value = [per_map] * len(control_images)
+                        control_kwargs = {"control_images": control_images, "controlnet_conditioning_scale": scale_value}
+                        self.engine.set_controlnet(nets)
                     else:
-                        self.logger.warning("ControlNet modules unavailable; falling back to text2img/img2img.")
                         self.engine.set_controlnet(None)
                 else:
                     self.engine.set_controlnet(None)
-            # if no control maps, fall back to pure text/img2img generation
             else:
                 self.engine.set_controlnet(None)
 
-            img2img_input = previous_image if (use_img2img and previous_image is not None) else None
-
+            # Use txt2img with ControlNet for all frames
+            # No img2img - identity preserved through consistent prompts + light ControlNet guidance
             image = self.engine.generate(
                 prompt=shot.prompt,
                 seed=frame_seed,
-                img2img_start=img2img_input,
-                strength=self.config.get("consistency", {}).get("img2img_strength", 0.35),
-                ip_adapter_embeddings=ip_kwargs,
                 **control_kwargs,
             )
 
@@ -161,8 +139,8 @@ class StoryboardGenerationPipeline:
                     seed=frame_seed,
                     control=control_flags,
                     identity_ref=IdentityRef(
-                        used=identity_used,
-                        type="ip-adapter" if identity_used else "none",
+                        used=bool(control_kwargs),
+                        type="controlnet" if control_kwargs else "none",
                     ),
                 )
             )
@@ -172,8 +150,6 @@ class StoryboardGenerationPipeline:
         metrics = self.evaluator.evaluate_sequence(output_dir)
 
         adapters = []
-        if use_ip_adapter and self.ip_manager is not None:
-            adapters.append("ip-adapter")
         if use_controlnet and self.control_manager is not None:
             adapters.append("controlnet")
 

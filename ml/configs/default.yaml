@@ -11,6 +11,7 @@ model:
     weight_path: null
     weight_name: null
     subfolder: null
+    weight: 0.7
   controlnet:
     union_path: null
     depth_path: null
@@ -18,10 +19,14 @@ model:
     edge_path: null
 consistency:
   seed: 12345
-  img2img_strength: 0.35
+  img2img_strength: 0.55
   face_crop_size: 512
   ip_adapter_weight: 0.8
   controlnet_weight: 0.9
+  controlnet_use:
+    depth: false
+    pose: false
+    edges: true
 thresholds:
   identity_min: 0.85
   ssim_min: 0.8

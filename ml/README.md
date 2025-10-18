@@ -8,6 +8,16 @@ This module contains the machine learning components that power the Aldar Köse 
 python -m venv .venv
 source .venv/bin/activate
 pip install -r ml/requirements.txt
+
+mkdir -p /dev/shm/hf_cache/hub
+mkdir -p /dev/shm/hf_cache/transformers
+chmod -R 777 /dev/shm/hf_cache
+
+
+export HF_HOME=/dev/shm/hf_cache
+export HF_HUB_CACHE=/dev/shm/hf_cache/hub
+export TRANSFORMERS_CACHE=/dev/shm/hf_cache/transformers
+
 python -m ml.src.cli.generate_storyboard --logline "Aldar Köse tricks a greedy merchant in the Kazakh steppe." --frames 8
 ```
 
