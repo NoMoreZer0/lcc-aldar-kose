@@ -12,7 +12,7 @@ from ... import crud, gpu_client, schemas
 from ...database import SessionLocal, get_db
 
 router = APIRouter()
-GPU_CALLBACK_BASE = os.getenv("GPU_CALLBACK_BASE", "http://localhost:9000")
+GPU_CALLBACK_BASE = os.getenv("GPU_CALLBACK_BASE", "http://localhost:9000/api/v1")
 logger = logging.getLogger(__name__)
 
 
