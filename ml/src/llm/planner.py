@@ -22,7 +22,7 @@ def _call_openai(logline: str, n_frames: int) -> List[Shot]:
 
         client = OpenAI(api_key=api_key)
         response = client.responses.create(
-            model="gpt-4.1-mini",
+            model="gpt-5",
             input=[
                 {"role": "system", "content": PRIMARY_SYSTEM_PROMPT},
                 {
