@@ -5,7 +5,7 @@ import zipfile
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, Optional
 
 import yaml
 from PIL import Image
@@ -83,26 +83,6 @@ def upload_to_s3(directory: Path, bucket: str, prefix: Optional[str] = None) -> 
                 key = f"{prefix}{file_path.relative_to(directory)}"
                 s3.upload_file(str(file_path), bucket, key)
         return f"s3://{bucket}/{prefix}"
-
-
-def generate_presigned_urls(bucket: str, keys: Iterable[str], expires_in: int = 86_400) -> Optional[List[str]]:
-    with optional_import("boto3") as boto3:
-        if boto3 is None:
-            return None
-        s3 = boto3.client("s3")
-        urls: List[str] = []
-        for key in keys:
-            try:
-                urls.append(
-                    s3.generate_presigned_url(
-                        ClientMethod="get_object",
-                        Params={"Bucket": bucket, "Key": key},
-                        ExpiresIn=expires_in,
-                    )
-                )
-            except Exception:
-                return None
-        return urls
 
 
 def upload_to_drive(directory: Path, drive_folder_id: str) -> Optional[str]:

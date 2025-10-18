@@ -1,17 +1,11 @@
 model:
   base_id: stabilityai/stable-diffusion-xl-base-1.0
-  use_ip_adapter: true
   use_controlnet: true
   height: 1024
   width: 1024
   steps: 30
   guidance: 7.5
   negative_prompt: "low quality, out of focus, distorted anatomy, caricature"
-  ip_adapter:
-    weight_path: null
-    weight_name: null
-    subfolder: null
-    weight: 0.7
   controlnet:
     union_path: null
     depth_path: null
@@ -21,7 +15,6 @@ consistency:
   seed: 12345
   img2img_strength: 0.55
   face_crop_size: 512
-  ip_adapter_weight: 0.8
   controlnet_weight: 0.9
   controlnet_use:
     depth: false
