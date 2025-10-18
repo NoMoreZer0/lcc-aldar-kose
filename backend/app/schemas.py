@@ -85,7 +85,7 @@ JobStatusType = Literal["pending", "processing", "completed", "failed"]
 
 class JobCreate(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=2000)
-    num_frames: int = Field(default=8, ge=6, le=10)
+    num_frames: int = Field(default=8, ge=1, le=10)
 
 
 class JobUpdate(BaseModel):

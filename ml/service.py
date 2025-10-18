@@ -35,6 +35,8 @@ IMAGE_BASE_URL = os.getenv("IMAGE_BASE_URL", "").rstrip("/")
 S3_BUCKET = os.getenv("S3_BUCKET", "storyboards")
 S3_PREFIX = os.getenv("S3_PREFIX", "").strip("/")
 ENABLE_S3_UPLOAD = os.getenv("ENABLE_S3_UPLOAD", "true").lower() != "false"
+S3_PRESIGN_URLS = os.getenv("S3_PRESIGN_URLS", "true").lower() != "false"
+S3_PRESIGNED_TTL = int(os.getenv("S3_PRESIGNED_TTL", "86400"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -100,10 +102,20 @@ def _object_prefix(run_id: str) -> str:
 
 def _build_image_urls(run_id: str, filenames: List[str]) -> List[str]:
     prefix = _object_prefix(run_id)
-    urls: List[str] = []
+    keys = [f"{prefix}/{filename}" if prefix else filename for filename in filenames]
 
-    for filename in filenames:
-        key = f"{prefix}/{filename}" if prefix else filename
+    if ENABLE_S3_UPLOAD and S3_PRESIGN_URLS:
+        presigned = io_utils.generate_presigned_urls(
+            S3_BUCKET,
+            keys,
+            expires_in=S3_PRESIGNED_TTL,
+        )
+        if presigned is not None:
+            return presigned
+        logger.warning("Presigned URLs unavailable; falling back to static paths for job %s", run_id)
+
+    urls: List[str] = []
+    for key in keys:
         if IMAGE_BASE_URL:
             urls.append(f"{IMAGE_BASE_URL}/{key}")
         else:
