@@ -9,10 +9,14 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session, joinedload
 
 from . import schemas
-from .models import AttachmentType, Chat, Message, MessageAttachment, MessageRole
+from .models import AttachmentType, Chat, Job, JobStatus, Message, MessageAttachment, MessageRole
 
 
 class ChatNotFoundError(Exception):
+    pass
+
+
+class JobNotFoundError(Exception):
     pass
 
 
@@ -116,3 +120,57 @@ def delete_chat(db: Session, chat_id: str) -> None:
 def list_messages(db: Session, chat_id: str) -> List[Message]:
     chat = get_chat(db, chat_id)
     return chat.messages
+
+
+def create_job(db: Session, chat_id: str, job_in: schemas.JobCreate) -> Job:
+    chat = db.query(Chat).filter(Chat.id == chat_id).one_or_none()
+    if chat is None:
+        raise ChatNotFoundError(f"Chat {chat_id} not found")
+
+    job = Job(
+        chat_id=chat_id,
+        prompt=job_in.prompt,
+        num_frames=job_in.num_frames,
+        status=JobStatus.PENDING,
+        progress=0,
+    )
+
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def get_job(db: Session, job_id: str) -> Job:
+    job = db.query(Job).filter(Job.id == job_id).one_or_none()
+    if job is None:
+        raise JobNotFoundError(f"Job {job_id} not found")
+    return job
+
+
+def update_job(db: Session, job_id: str, job_update: schemas.JobUpdate) -> Job:
+    job = get_job(db, job_id)
+
+    if job_update.status is not None:
+        job.status = JobStatus(job_update.status)
+
+    if job_update.progress is not None:
+        job.progress = job_update.progress
+
+    if job_update.result_urls is not None:
+        job.result_urls = job_update.result_urls
+
+    if job_update.error_message is not None:
+        job.error_message = job_update.error_message
+
+    if job_update.status == "completed":
+        job.completed_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def list_jobs_by_chat(db: Session, chat_id: str) -> List[Job]:
+    chat = get_chat(db, chat_id)
+    return chat.jobs
