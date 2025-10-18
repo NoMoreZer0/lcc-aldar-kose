@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import List, Literal, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, Field, HttpUrl
+
+MessageRole = Literal["user", "assistant"]
+AttachmentType = Literal["image"]
+
+
+class AttachmentBase(BaseModel):
+    type: AttachmentType = Field(default="image", description="Attachment type")
+    url: HttpUrl = Field(description="Public URL to the attachment resource")
+    alt: str = Field(description="Accessible description for the attachment")
+
+
+class AttachmentCreate(AttachmentBase):
+    pass
+
+
+class AttachmentRead(AttachmentBase):
+    id: UUID
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class MessageBase(BaseModel):
+    role: MessageRole
+    content: str
+
+
+class MessageCreate(MessageBase):
+    attachments: Optional[List[AttachmentCreate]] = None
+
+
+class MessageRead(MessageBase):
+    id: UUID
+    sequence: int
+    created_at: datetime
+    attachments: List[AttachmentRead] = Field(default_factory=list)
+
+    class Config:
+        orm_mode = True
+
+
+class ChatBase(BaseModel):
+    title: Optional[str] = None
+
+
+class ChatCreate(ChatBase):
+    pass
+
+
+class ChatUpdate(ChatBase):
+    pass
+
+
+class ChatSummary(ChatBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    message_count: int
+    last_message_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True
+
+
+class ChatRead(ChatBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    messages: List[MessageRead] = Field(default_factory=list)
+
+    class Config:
+        orm_mode = True
