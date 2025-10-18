@@ -21,16 +21,15 @@ from pydantic import BaseModel, Field
 # Ensure project packages are importable when running `python service.py`
 CURRENT_DIR = Path(__file__).parent
 PROJECT_ROOT = CURRENT_DIR.parent
-for path in (CURRENT_DIR, PROJECT_ROOT):
-    path_str = str(path)
-    if path_str not in sys.path:
-        sys.path.insert(0, path_str)
+project_root_str = str(PROJECT_ROOT)
+if project_root_str not in sys.path:
+    sys.path.insert(0, project_root_str)
 
-from src.diffusion.pipeline import StoryboardGenerationPipeline
-from src.llm.planner import plan_shots
-from src.utils import io as io_utils
-from src.utils.determinism import configure_determinism, set_seed
-from src.utils.schema import ConfigModel
+from ml.src.diffusion.pipeline import StoryboardGenerationPipeline
+from ml.src.llm.story_context import build_plan_payload, frames_to_shots, generate_story_frames
+from ml.src.utils import io as io_utils
+from ml.src.utils.determinism import configure_determinism, set_seed
+from ml.src.utils.schema import ConfigModel
 
 CONFIG_PATH = CURRENT_DIR / "configs" / "default.yaml"
 OUTPUT_BASE = Path(os.getenv("OUTPUT_DIR", CURRENT_DIR / "outputs"))
@@ -145,13 +144,18 @@ async def run_generation(request: GenerationRequest) -> None:
 
         await report_progress(request.callback_url, job_id, 10)
 
-        logger.info("Planning shots for job %s", job_id)
-        shots = plan_shots(request.prompt, n_frames=request.num_frames)
+        logger.info("Generating narrative plan with GPT-5 for job %s", job_id)
+        frames = generate_story_frames(request.prompt, request.num_frames)
+        plan_payload = build_plan_payload(request.prompt, frames)
+        shots = frames_to_shots(frames)
 
         await report_progress(request.callback_url, job_id, 30)
 
         run_id = f"job_{job_id[:8]}_{int(time.time())}"
         output_dir = io_utils.ensure_dir(OUTPUT_BASE / run_id)
+        plan_path = output_dir / "plan.json"
+        io_utils.dump_json(plan_path, plan_payload)
+        logger.info("Saved GPT plan for job %s to %s", job_id, plan_path)
 
         pipeline = StoryboardGenerationPipeline(config_dict, logger=logger)
 

@@ -15,8 +15,9 @@ Return only valid JSON as instructed — no Markdown, no commentary."""
 
 # 1) A quick outline pass creates beats that the shot-writer must follow.
 OUTLINE_PROMPT_TEMPLATE = """Logline: {logline}
+############################################################
 Target frames: {num_frames}
-
+############################################################
 Create a tight outline for a 1-scene short story starring Aldar Köse.
 Return JSON:
 {{
@@ -57,14 +58,19 @@ Return a JSON array of length {num_frames}. Each item has:
   "frame_id": <int 1..{num_frames}>,
   "caption": "<1 concise sentence>",
   "prompt": "<rich but compact image prompt that includes {aldar_token} and the canonical description>",
-  "camera_direction": "<from allowed set>",
-  "style_tag": "<from allowed set>",
+  "camera_direction": "<from allowed set of camera directions>",
+  "style_tag": "<from allowed set> of style tags",
   "new_element": "<what newly appears/changes>",
   "continuity_note": "<what to carry over from the previous frame>",
   "negatives": "low detail, extra fingers, distorted faces, stereotype imagery"
 }}
 
+############################################################
+
 Allowed camera directions: {camera_directions}
+
+############################################################
+
 Allowed style tags: {style_tags}
 """
 
