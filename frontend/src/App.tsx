@@ -22,22 +22,6 @@ const App = () => {
       />
 
       <main className="chat-panel">
-        <header className="chat-panel__header">
-          <div>
-            <h1>Aldar Kose Assistant</h1>
-            <p>Ask questions, brainstorm ideas, or explore knowledge about the Aldar Kose project.</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              void startNewChat().catch(() => undefined);
-            }}
-            disabled={isLoading}
-          >
-            Clear chat
-          </button>
-        </header>
-
         <MessageList messages={messages} isLoading={isLoading} />
 
         {error && (
