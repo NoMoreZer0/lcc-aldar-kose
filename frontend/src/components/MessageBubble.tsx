@@ -22,9 +22,13 @@ const renderAttachment = (attachment: MessageAttachment, index: number) => {
 export const MessageBubble = ({ message }: MessageBubbleProps) => {
   const bubbleClassName = `message-bubble message-bubble--${message.role}`;
   const createdAt = new Date(message.createdAt);
+  const formatUtcPlusFive = (date: Date) => {
+    const utcPlusFive = new Date(date.getTime() + 5 * 60 * 60 * 1000);
+    return `${utcPlusFive.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} UTC+5`;
+  };
   const displayTime = Number.isNaN(createdAt.getTime())
     ? message.createdAt
-    : createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    : formatUtcPlusFive(createdAt);
 
   return (
     <article className={bubbleClassName} aria-label={`${roleLabel[message.role]} message`}>

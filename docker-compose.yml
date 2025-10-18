@@ -15,7 +15,7 @@ services:
     build:
       context: ./frontend
     environment:
-      - VITE_USE_MOCK=true
+      - VITE_USE_MOCK=false
       - VITE_API_BASE=/api/v1
       - VITE_PROXY_TARGET=http://backend:8000
     ports:

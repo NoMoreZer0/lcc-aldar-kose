@@ -79,6 +79,22 @@ type ApiChatSummary = {
   last_message_at: string | null;
 };
 
+type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+type ApiJob = {
+  id: string;
+  chat_id: string;
+  prompt: string;
+  status: JobStatus;
+  progress: number;
+  result_urls: string[] | null;
+  error_message: string | null;
+  num_frames: number;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+};
+
 interface UseChatResult {
   chats: ChatSummary[];
   activeChatId: string | null;
@@ -205,6 +221,45 @@ export const useChat = (): UseChatResult => {
     return parseJson<ApiMessage>(response);
   }, []);
 
+  const createJob = useCallback(async (targetChatId: string, prompt: string, numFrames: number = 8): Promise<ApiJob> => {
+    const response = await fetch(buildUrl(`/chats/${targetChatId}/jobs`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ prompt, num_frames: numFrames })
+    });
+
+    return parseJson<ApiJob>(response);
+  }, []);
+
+  const getJobStatus = useCallback(async (jobId: string): Promise<ApiJob> => {
+    const response = await fetch(buildUrl(`/jobs/${jobId}`));
+    return parseJson<ApiJob>(response);
+  }, []);
+
+  const pollJobUntilComplete = useCallback(async (jobId: string): Promise<ApiJob> => {
+    const maxAttempts = 300; // 2 minutes max (120 * 1000ms)
+    const pollInterval = 1000; // 1 second
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const job = await getJobStatus(jobId);
+
+      if (job.status === 'completed') {
+        return job;
+      }
+
+      if (job.status === 'failed') {
+        throw new Error(job.error_message || 'Job failed to complete');
+      }
+
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+
+    throw new Error('Job timed out');
+  }, [getJobStatus]);
+
   const startNewChat = useCallback(async (): Promise<string> => {
     if (chatCreationPromiseRef.current) {
       return chatCreationPromiseRef.current;
@@ -317,6 +372,29 @@ export const useChat = (): UseChatResult => {
           const savedAssistant = await persistMessage(targetChatId, assistantPayload);
           const assistantMessage = adaptMessage(savedAssistant);
           setMessages((prev) => [...prev, assistantMessage]);
+        } else {
+          // Real backend: create job and poll for completion
+          const job = await createJob(targetChatId, trimmedPrompt);
+
+          // Poll for job completion
+          const completedJob = await pollJobUntilComplete(job.id);
+
+          // Create assistant message with generated images
+          if (completedJob.result_urls && completedJob.result_urls.length > 0) {
+            const assistantPayload: MessagePayload = {
+              role: 'assistant',
+              content: `I've generated ${completedJob.result_urls.length} images based on your prompt: "${trimmedPrompt}"`,
+              attachments: completedJob.result_urls.map((url, index) => ({
+                type: 'image' as const,
+                url,
+                alt: `Generated image ${index + 1} for "${trimmedPrompt}"`
+              }))
+            };
+
+            const savedAssistant = await persistMessage(targetChatId, assistantPayload);
+            const assistantMessage = adaptMessage(savedAssistant);
+            setMessages((prev) => [...prev, assistantMessage]);
+          }
         }
 
         await loadChatSummaries();
@@ -334,7 +412,7 @@ export const useChat = (): UseChatResult => {
         setIsLoading(false);
       }
     },
-    [ensureChatId, listMessages, loadChatSummaries, persistMessage]
+    [ensureChatId, listMessages, loadChatSummaries, persistMessage, createJob, pollJobUntilComplete]
   );
 
   useEffect(() => {
