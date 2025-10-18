@@ -11,7 +11,6 @@ from ..utils.schema import FrameControl, FrameEntry, IdentityRef, Shot, Storyboa
 from ..utils.vision import crop_center
 from .controlnet import ControlNetManager
 from .engine import SDXLEngine
-from .ip_adapter import IPAdapterManager
 from .latent_hooks import LatentHookManager
 
 
@@ -31,15 +30,6 @@ class StoryboardGenerationPipeline:
         self.engine = engine or SDXLEngine(model_cfg, logger=self.logger)
         self.latent_hooks = LatentHookManager(consistency_cfg, logger=self.logger)
 
-        self.ip_manager = (
-            IPAdapterManager(
-                self.engine.img2img,
-                config=model_cfg.get("ip_adapter", {}),
-                logger=self.logger,
-            )
-            if model_cfg.get("use_ip_adapter", True)
-            else None
-        )
         self.control_manager = (
             ControlNetManager(
                 self.engine.device,
@@ -90,18 +80,11 @@ class StoryboardGenerationPipeline:
         for index, shot in enumerate(shots):
             frame_seed = self._frame_seed(base_seed, index)
 
-            # IP-Adapter usage is a simple yes/no: previous frame exists and feature enabled
-            identity_used = use_ip_adapter and self.ip_manager is not None and previous_image is not None
-            if identity_used and not self.ip_manager.loaded:
-                self.ip_manager.load()
-            ip_kwargs: Dict[str, Any] = self.ip_manager.get_kwargs(previous_image) if identity_used else {}
-            use_img2img = identity_used
-            if identity_used:
-                self.logger.info("Frame %s: using IP-Adapter", shot.frame_id)
-
-            # ControlNet maps and modules (flattened flow)
+            # ControlNet for structural/compositional guidance only - no img2img
+            # Identity consistency relies on consistent character descriptions in prompts
             control_kwargs: Dict[str, Any] = {}
             control_flags = FrameControl()
+
             if use_controlnet and self.control_manager is not None and previous_image is not None:
                 control_maps, control_flags = self._compute_control_maps(
                     previous_image,
@@ -115,11 +98,13 @@ class StoryboardGenerationPipeline:
                     control_images = [img for _, img in control_maps]
                     nets = self.control_manager.get_controlnets(control_flags.depth, control_flags.pose, control_flags.edges)
                     if nets:
-                        strength_cfg = self.config.get("consistency", {}).get("controlnet_weight", 0.9)
+                        # Light ControlNet conditioning for loose compositional guidance
+                        # Allows variation while maintaining general scene structure
+                        strength_cfg = self.config.get("consistency", {}).get("controlnet_weight", 0.3)
                         if len(control_images) == 1:
-                            scale_value = min(strength_cfg, 0.6)
+                            scale_value = min(strength_cfg, 0.3)
                         else:
-                            per_map = min(strength_cfg, 0.3)
+                            per_map = min(strength_cfg, 0.2)
                             scale_value = [per_map] * len(control_images)
                         control_kwargs = {"control_images": control_images, "controlnet_conditioning_scale": scale_value}
                         self.engine.set_controlnet(nets)
@@ -130,15 +115,11 @@ class StoryboardGenerationPipeline:
             else:
                 self.engine.set_controlnet(None)
 
-            # Use Img2Img only when identity is used; else txt2img (even with ControlNet)
-            img2img_input = previous_image if use_img2img else None
-
+            # Use txt2img with ControlNet for all frames
+            # No img2img - identity preserved through consistent prompts + light ControlNet guidance
             image = self.engine.generate(
                 prompt=shot.prompt,
                 seed=frame_seed,
-                img2img_start=img2img_input,
-                strength=self.config.get("consistency", {}).get("img2img_strength", 0.35),
-                ip_adapter_embeddings=ip_kwargs,
                 **control_kwargs,
             )
 
@@ -158,8 +139,8 @@ class StoryboardGenerationPipeline:
                     seed=frame_seed,
                     control=control_flags,
                     identity_ref=IdentityRef(
-                        used=identity_used,
-                        type="ip-adapter" if identity_used else "none",
+                        used=bool(control_kwargs),
+                        type="controlnet" if control_kwargs else "none",
                     ),
                 )
             )
@@ -169,8 +150,6 @@ class StoryboardGenerationPipeline:
         metrics = self.evaluator.evaluate_sequence(output_dir)
 
         adapters = []
-        if use_ip_adapter and self.ip_manager is not None:
-            adapters.append("ip-adapter")
         if use_controlnet and self.control_manager is not None:
             adapters.append("controlnet")
 

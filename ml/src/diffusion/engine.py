@@ -210,7 +210,6 @@ class SDXLEngine:
         strength: float = 0.35,
         control_images: Optional[List[Image.Image]] = None,
         controlnet_conditioning_scale: Optional[List[float]] = None,
-        ip_adapter_embeddings: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Image.Image:
         generator = torch.Generator(device=self.device)
         if seed is not None:
@@ -257,30 +256,10 @@ class SDXLEngine:
         elif controlnet_conditioning_scale is not None:
             self.logger.debug("Ignoring controlnet_conditioning_scale without control images.")
 
-        if ip_adapter_embeddings and img2img_start is not None:
-            do_cfg = bool(guidance and guidance > 1.0)
-            # Handle both diffusers signatures for prepare_ip_adapter_image_embeds
-            prepare_sig = inspect.signature(self.img2img.prepare_ip_adapter_image_embeds).parameters
-            processor = self.img2img.image_processor or self.img2img.feature_extractor
-            inputs = processor(images=img2img_start, return_tensors="pt")
-            pixel_values = inputs["pixel_values"].to(device=self.device)
-            with torch.no_grad():
-                enc_out = self.img2img.image_encoder(pixel_values)
-            cand = getattr(enc_out, "image_embeds", None) or getattr(enc_out, "pooler_output", None)
-            if cand is None and hasattr(enc_out, "last_hidden_state"):
-                cand = enc_out.last_hidden_state[:, 0]
-            ip_embeds = [cand]
-            kwargs["ip_adapter_image_embeds"] = ip_embeds
-            kwargs["added_cond_kwargs"] = {"image_embeds": ip_embeds}
-            if "ip_adapter_scale" in ip_adapter_embeddings:
-                kwargs["ip_adapter_scale"] = ip_adapter_embeddings["ip_adapter_scale"]
-        # Emit INFO-level details to verify presence of IP-Adapter embeds at runtime
-        added_ok = "added_cond_kwargs" in kwargs and isinstance(kwargs.get("added_cond_kwargs"), dict) and "image_embeds" in kwargs["added_cond_kwargs"]
         self.logger.info(
-            "Engine.generate: using %s; keys=%s; has_added_cond_image_embeds=%s",
+            "Engine.generate: using %s; keys=%s",
             pipeline.__class__.__name__,
             sorted(kwargs.keys()),
-            added_ok,
         )
 
         self.logger.debug(
