@@ -32,6 +32,9 @@ from src.utils.schema import ConfigModel
 CONFIG_PATH = CURRENT_DIR / "configs" / "default.yaml"
 OUTPUT_BASE = Path(os.getenv("OUTPUT_DIR", CURRENT_DIR / "outputs"))
 IMAGE_BASE_URL = os.getenv("IMAGE_BASE_URL", "").rstrip("/")
+S3_BUCKET = os.getenv("S3_BUCKET", "storyboards")
+S3_PREFIX = os.getenv("S3_PREFIX", "").strip("/")
+ENABLE_S3_UPLOAD = os.getenv("ENABLE_S3_UPLOAD", "true").lower() != "false"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -90,10 +93,23 @@ async def report_failure(callback_url: str, job_id: str, error_message: str) -> 
     logger.error("Reported failure for job %s: %s", job_id, error_message)
 
 
-def _build_image_url(run_id: str, filename: str) -> str:
-    if IMAGE_BASE_URL:
-        return f"{IMAGE_BASE_URL}/{run_id}/{filename}"
-    return f"/images/{run_id}/{filename}"
+def _object_prefix(run_id: str) -> str:
+    parts = [part for part in (S3_PREFIX, run_id) if part]
+    return "/".join(parts)
+
+
+def _build_image_urls(run_id: str, filenames: List[str]) -> List[str]:
+    prefix = _object_prefix(run_id)
+    urls: List[str] = []
+
+    for filename in filenames:
+        key = f"{prefix}/{filename}" if prefix else filename
+        if IMAGE_BASE_URL:
+            urls.append(f"{IMAGE_BASE_URL}/{key}")
+        else:
+            urls.append(f"s3://{S3_BUCKET}/{key}")
+
+    return urls
 
 
 async def run_generation(request: GenerationRequest) -> None:
@@ -144,10 +160,17 @@ async def run_generation(request: GenerationRequest) -> None:
         )
         io_utils.dump_json(index_path, index_dict)
 
-        image_urls = [
-            _build_image_url(run_id, frame_file.name)
-            for frame_file in sorted(output_dir.glob("frame_*.png"))
-        ]
+        frame_files = sorted(output_dir.glob("frame_*.png"))
+        filenames = [frame_file.name for frame_file in frame_files]
+
+        if ENABLE_S3_UPLOAD:
+            object_prefix = _object_prefix(run_id) or run_id
+            logger.info("Uploading results for job %s to s3://%s/%s", job_id, S3_BUCKET, object_prefix)
+            uploaded = io_utils.upload_to_s3(output_dir, S3_BUCKET, prefix=object_prefix)
+            if uploaded is None:
+                logger.warning("S3 upload skipped for job %s; boto3 not available", job_id)
+
+        image_urls = _build_image_urls(run_id, filenames)
 
         await report_completion(request.callback_url, job_id, image_urls)
     except Exception as exc:  # pragma: no cover - pipeline failure

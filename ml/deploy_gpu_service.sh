@@ -7,6 +7,9 @@ echo "🚀 Deploying Aldar Kose GPU Inference Service..."
 
 PORT=${PORT:-8001}
 WORKERS=${WORKERS:-1}
+S3_BUCKET=${S3_BUCKET:-storyboards}
+S3_PREFIX=${S3_PREFIX:-}
+ENABLE_S3_UPLOAD=${ENABLE_S3_UPLOAD:-true}
 
 echo "📦 Building Docker image..."
 docker build -f Dockerfile.service -t aldar-kose-gpu:latest .
@@ -26,6 +29,9 @@ docker run -d \
   -e IMAGE_BASE_URL="${IMAGE_BASE_URL:-http://localhost:8000/images}" \
   -e PORT=8001 \
   -e WORKERS="${WORKERS}" \
+  -e S3_BUCKET="${S3_BUCKET}" \
+  -e S3_PREFIX="${S3_PREFIX}" \
+  -e ENABLE_S3_UPLOAD="${ENABLE_S3_UPLOAD}" \
   --restart unless-stopped \
   aldar-kose-gpu:latest
 
