@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import inspect
 import logging
+import os
 from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Optional
 
 import torch
+from huggingface_hub import constants as hf_hub_constants
+
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+hf_hub_constants.HF_HUB_ENABLE_HF_TRANSFER = False
+
 from diffusers import (
     DPMSolverMultistepScheduler,
     StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLControlNetImg2ImgPipeline,
     StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLPipeline,
 )
@@ -71,6 +78,7 @@ class SDXLEngine:
         self.img2img = StableDiffusionXLImg2ImgPipeline(**img_components).to(self.device)
 
         self._control_pipeline: Optional[StableDiffusionXLControlNetPipeline] = None
+        self._control_img2img_pipeline: Optional[StableDiffusionXLControlNetImg2ImgPipeline] = None
         self._controlnet = None
 
         self.enable_memory_optimizations()
@@ -79,6 +87,8 @@ class SDXLEngine:
         pipes: List[Any] = [self.txt2img, self.img2img]
         if self._control_pipeline is not None:
             pipes.append(self._control_pipeline)
+        if getattr(self, "_control_img2img_pipeline", None) is not None:
+            pipes.append(self._control_img2img_pipeline)
         if extra_pipes:
             pipes.extend(extra_pipes)
         seen = set()
@@ -88,7 +98,9 @@ class SDXLEngine:
             seen.add(id(pipe))
             pipe.enable_vae_tiling()
             pipe.enable_vae_slicing()
-            if hasattr(pipe, "enable_xformers_memory_efficient_attention"):
+            if (
+                self.device.type == "cuda"
+                and torch.cuda.is_available()):
                 pipe.enable_xformers_memory_efficient_attention()
 
     def get_dtype(self) -> torch.dtype:
@@ -114,9 +126,14 @@ class SDXLEngine:
 
         self._controlnet = prepared
 
-        if self._control_pipeline is not None:
-            self._control_pipeline.controlnet = prepared
-            self.enable_memory_optimizations(extra_pipes=[self._control_pipeline])
+        if self._control_pipeline is not None or self._control_img2img_pipeline is not None:
+            if self._control_pipeline is not None:
+                self._control_pipeline.controlnet = prepared
+            if self._control_img2img_pipeline is not None:
+                self._control_img2img_pipeline.controlnet = prepared
+            self.enable_memory_optimizations(
+                extra_pipes=[p for p in [self._control_pipeline, self._control_img2img_pipeline] if p is not None]
+            )
             return
 
         control_signature = inspect.signature(StableDiffusionXLControlNetPipeline.__init__).parameters
@@ -148,7 +165,37 @@ class SDXLEngine:
                 ).to(self.device)
         else:
             self._control_pipeline.scheduler = self.txt2img.scheduler
-        self.enable_memory_optimizations(extra_pipes=[self._control_pipeline])
+
+        # Build ControlNet Img2Img pipeline
+        try:
+            control_img2img_signature = inspect.signature(StableDiffusionXLControlNetImg2ImgPipeline.__init__).parameters
+            control_img2img_components = {
+                key: value
+                for key, value in self.img2img.components.items()
+                if key in control_img2img_signature and key not in {"self", "controlnet"}
+            }
+            if "requires_safety_checker" in control_img2img_signature:
+                control_img2img_components.setdefault("requires_safety_checker", False)
+            control_img2img_components["controlnet"] = prepared
+            self._control_img2img_pipeline = StableDiffusionXLControlNetImg2ImgPipeline(**control_img2img_components).to(self.device)
+        except Exception:
+            dtype = next(self.txt2img.unet.parameters()).dtype
+            try:
+                self._control_img2img_pipeline = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
+                    self.cfg.base_id,
+                    controlnet=prepared,
+                    torch_dtype=dtype,
+                    use_safetensors=True,
+                ).to(self.device)
+            except Exception:
+                self._control_img2img_pipeline = None  # fallback: only txt2img controlnet available
+
+        if self._control_img2img_pipeline is not None:
+            self._control_img2img_pipeline.scheduler = self.img2img.scheduler
+
+        self.enable_memory_optimizations(
+            extra_pipes=[p for p in [self._control_pipeline, self._control_img2img_pipeline] if p is not None]
+        )
 
     def generate(
         self,
@@ -191,19 +238,56 @@ class SDXLEngine:
             kwargs["image"] = img2img_start
             kwargs["strength"] = strength
 
-        if control_images and self._control_pipeline is not None:
-            pipeline = self._control_pipeline
-            kwargs["control_image"] = control_images
+        if control_images and self._controlnet is not None:
+            n_ctrl = len(control_images)
+            if img2img_start is not None and self._control_img2img_pipeline is not None:
+                # Use ControlNet Img2Img pipeline
+                pipeline = self._control_img2img_pipeline
+                kwargs["image"] = img2img_start
+                kwargs["control_image"] = control_images
+                # Do not replicate init image; let the pipeline expand for CFG/batch internally.
+            else:
+                # Use ControlNet txt2img pipeline
+                pipeline = self._control_pipeline
+                kwargs["image"] = control_images
             if controlnet_conditioning_scale is not None:
                 kwargs["controlnet_conditioning_scale"] = controlnet_conditioning_scale
             elif "controlnet_conditioning_scale" not in kwargs:
-                kwargs["controlnet_conditioning_scale"] = [0.9] * len(control_images)
+                kwargs["controlnet_conditioning_scale"] = [0.9] * n_ctrl
         elif controlnet_conditioning_scale is not None:
             self.logger.debug("Ignoring controlnet_conditioning_scale without control images.")
 
-        if ip_adapter_embeddings:
-            # ip_adapter_embeddings assumed to be handled externally before invocation.
-            kwargs.update(ip_adapter_embeddings)
+        if ip_adapter_embeddings and img2img_start is not None:
+            do_cfg = bool(guidance and guidance > 1.0)
+            # Handle both diffusers signatures for prepare_ip_adapter_image_embeds
+            prepare_sig = inspect.signature(self.img2img.prepare_ip_adapter_image_embeds).parameters
+            processor = self.img2img.image_processor or self.img2img.feature_extractor
+            inputs = processor(images=img2img_start, return_tensors="pt")
+            pixel_values = inputs["pixel_values"].to(device=self.device)
+            with torch.no_grad():
+                enc_out = self.img2img.image_encoder(pixel_values)
+            cand = getattr(enc_out, "image_embeds", None) or getattr(enc_out, "pooler_output", None)
+            if cand is None and hasattr(enc_out, "last_hidden_state"):
+                cand = enc_out.last_hidden_state[:, 0]
+            ip_embeds = [cand]
+            kwargs["ip_adapter_image_embeds"] = ip_embeds
+            kwargs["added_cond_kwargs"] = {"image_embeds": ip_embeds}
+            if "ip_adapter_scale" in ip_adapter_embeddings:
+                kwargs["ip_adapter_scale"] = ip_adapter_embeddings["ip_adapter_scale"]
+        # Emit INFO-level details to verify presence of IP-Adapter embeds at runtime
+        added_ok = "added_cond_kwargs" in kwargs and isinstance(kwargs.get("added_cond_kwargs"), dict) and "image_embeds" in kwargs["added_cond_kwargs"]
+        self.logger.info(
+            "Engine.generate: using %s; keys=%s; has_added_cond_image_embeds=%s",
+            pipeline.__class__.__name__,
+            sorted(kwargs.keys()),
+            added_ok,
+        )
+
+        self.logger.debug(
+            "Invoking %s with keys=%s",
+            pipeline.__class__.__name__,
+            sorted(kwargs.keys()),
+        )
 
         output = pipeline(**kwargs)
         if hasattr(output, "images"):

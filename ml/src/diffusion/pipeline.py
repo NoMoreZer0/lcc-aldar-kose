@@ -33,7 +33,7 @@ class StoryboardGenerationPipeline:
 
         self.ip_manager = (
             IPAdapterManager(
-                self.engine.txt2img,
+                self.engine.img2img,
                 config=model_cfg.get("ip_adapter", {}),
                 logger=self.logger,
             )
@@ -90,51 +90,48 @@ class StoryboardGenerationPipeline:
         for index, shot in enumerate(shots):
             frame_seed = self._frame_seed(base_seed, index)
 
-            ip_kwargs = {}
-            identity_used = False
-            use_img2img = False
-            if use_ip_adapter and previous_image is not None and self.ip_manager is not None:
-                ip_kwargs = self.ip_manager.get_kwargs(previous_image)
-                identity_used = bool(ip_kwargs)
-                use_img2img = identity_used
+            # IP-Adapter usage is a simple yes/no: previous frame exists and feature enabled
+            identity_used = use_ip_adapter and self.ip_manager is not None and previous_image is not None
+            if identity_used and not self.ip_manager.loaded:
+                self.ip_manager.load()
+            ip_kwargs: Dict[str, Any] = self.ip_manager.get_kwargs(previous_image) if identity_used else {}
+            use_img2img = identity_used
+            if identity_used:
+                self.logger.info("Frame %s: using IP-Adapter", shot.frame_id)
 
+            # ControlNet maps and modules (flattened flow)
             control_kwargs: Dict[str, Any] = {}
             control_flags = FrameControl()
-            if use_controlnet and previous_image is not None and self.control_manager is not None:
+            if use_controlnet and self.control_manager is not None and previous_image is not None:
                 control_maps, control_flags = self._compute_control_maps(
                     previous_image,
-                    {"depth": True, "pose": True, "edges": True},
+                    {
+                        "depth": self.config.get("consistency", {}).get("controlnet_use", {}).get("depth", False),
+                        "pose": self.config.get("consistency", {}).get("controlnet_use", {}).get("pose", False),
+                        "edges": self.config.get("consistency", {}).get("controlnet_use", {}).get("edges", True),
+                    },
                 )
                 if control_maps:
                     control_images = [img for _, img in control_maps]
-                    control_strength = self.config.get("consistency", {}).get("controlnet_weight", 0.9)
-                    controlnet_modules = self.control_manager.get_controlnets(
-                        control_flags.depth,
-                        control_flags.pose,
-                        control_flags.edges,
-                    )
-                    if controlnet_modules:
-                        scale_value: Any
+                    nets = self.control_manager.get_controlnets(control_flags.depth, control_flags.pose, control_flags.edges)
+                    if nets:
+                        strength_cfg = self.config.get("consistency", {}).get("controlnet_weight", 0.9)
                         if len(control_images) == 1:
-                            scale_value = control_strength
+                            scale_value = min(strength_cfg, 0.6)
                         else:
-                            scale_value = [control_strength] * len(control_images)
-                        control_kwargs = {
-                            "control_images": control_images,
-                            "controlnet_conditioning_scale": scale_value,
-                        }
-                        self.engine.set_controlnet(controlnet_modules)
-                        use_img2img = True
+                            per_map = min(strength_cfg, 0.3)
+                            scale_value = [per_map] * len(control_images)
+                        control_kwargs = {"control_images": control_images, "controlnet_conditioning_scale": scale_value}
+                        self.engine.set_controlnet(nets)
                     else:
-                        self.logger.warning("ControlNet modules unavailable; falling back to text2img/img2img.")
                         self.engine.set_controlnet(None)
                 else:
                     self.engine.set_controlnet(None)
-            # if no control maps, fall back to pure text/img2img generation
             else:
                 self.engine.set_controlnet(None)
 
-            img2img_input = previous_image if (use_img2img and previous_image is not None) else None
+            # Use Img2Img only when identity is used; else txt2img (even with ControlNet)
+            img2img_input = previous_image if use_img2img else None
 
             image = self.engine.generate(
                 prompt=shot.prompt,

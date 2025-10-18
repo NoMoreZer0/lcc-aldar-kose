@@ -37,8 +37,11 @@ def depth_map(image: Image.Image) -> Optional[Image.Image]:
         from controlnet_aux import MidasDetector
     except ImportError:
         return None
-    detector = MidasDetector.from_pretrained("lllyasviel/Annotators")
-    depth = detector(resize_with_aspect(image, 768))
+    try:
+        detector = MidasDetector.from_pretrained("lllyasviel/Annotators")
+        depth = detector(resize_with_aspect(image, 768))
+    except Exception:
+        return None
     return depth.resize(image.size)
 
 
@@ -47,8 +50,11 @@ def pose_map(image: Image.Image) -> Optional[Image.Image]:
         from controlnet_aux import OpenposeDetector
     except ImportError:
         return None
-    detector = OpenposeDetector.from_pretrained("lllyasviel/Annotators")
-    pose = detector(image)
+    try:
+        detector = OpenposeDetector.from_pretrained("lllyasviel/Annotators")
+        pose = detector(image)
+    except Exception:
+        return None
     return pose
 
 
@@ -83,7 +89,11 @@ def compute_face_embedding(image: Image.Image) -> Optional[np.ndarray]:
     except ImportError:
         return None
 
-    model, _, preprocess = open_clip.create_model_and_transforms("ViT-H-14", pretrained="laion2b_s32b_b79k")
+    try:
+        model, _, preprocess = open_clip.create_model_and_transforms("ViT-H-14", pretrained="laion2b_s32b_b79k")
+    except Exception:
+        return None
+
     model.eval()
     with torch.no_grad():
         tensor = preprocess(image).unsqueeze(0)
