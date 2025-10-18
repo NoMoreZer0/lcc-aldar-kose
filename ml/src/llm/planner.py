@@ -33,12 +33,11 @@ def _call_openai(logline: str, n_frames: int) -> List[Shot]:
         # Stage 1: Outline
         outline_prompt = OUTLINE_PROMPT_TEMPLATE.format(logline=logline, num_frames=n_frames)
         outline_resp = client.responses.create(
-            model="gpt-4.1-mini",
+            model="gpt-5-mini",
             input=[
                 {"role": "system", "content": PRIMARY_SYSTEM_PROMPT},
                 {"role": "user", "content": outline_prompt},
             ],
-            temperature=0.6,
             max_output_tokens=800,
         )
         outline_text = outline_resp.output[0].content[0].text  # type: ignore[index]
@@ -55,12 +54,11 @@ def _call_openai(logline: str, n_frames: int) -> List[Shot]:
             style_tags=FALLBACK_STYLE_TAGS,
         )
         shots_resp = client.responses.create(
-            model="gpt-4.1-mini",
+            model="gpt-5-mini",
             input=[
                 {"role": "system", "content": PRIMARY_SYSTEM_PROMPT},
                 {"role": "user", "content": shot_prompt},
             ],
-            temperature=0.6,
             max_output_tokens=1400,
         )
         shots_text = shots_resp.output[0].content[0].text  # type: ignore[index]

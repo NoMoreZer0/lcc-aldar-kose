@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..evaluate.evaluator import SequenceEvaluator
 from ..utils import io as io_utils
@@ -43,6 +43,61 @@ class StoryboardGenerationPipeline:
         )
         evaluator = config.get("_evaluator")
         self.evaluator = evaluator or SequenceEvaluator(config=config, logger=self.logger)
+        self._plan_cache: Dict[str, Tuple[Dict[int, Dict[str, str]], Optional[str]]] = {}
+
+    def _load_plan_context(self, output_dir: Path) -> Tuple[Dict[int, Dict[str, str]], Optional[str]]:
+        cache_key = str(output_dir.resolve())
+        if cache_key in self._plan_cache:
+            return self._plan_cache[cache_key]
+
+        plan_path = output_dir / "plan.json"
+        context: Dict[int, Dict[str, str]] = {}
+        premise: Optional[str] = None
+
+        if plan_path.exists():
+            try:
+                plan_data = io_utils.load_json(plan_path)
+                premise = plan_data.get("premise")
+                for beat in plan_data.get("beats", []):
+                    frame_identifier = beat.get("id") or beat.get("frame_id")
+                    try:
+                        frame_id = int(frame_identifier)
+                    except (TypeError, ValueError):
+                        continue
+                    context[frame_id] = {
+                        "beat": beat.get("beat", ""),
+                        "narration": beat.get("narration", ""),
+                        "frame_prompt": beat.get("frame_prompt", ""),
+                    }
+                self.logger.info("Loaded plan context from %s", plan_path)
+            except Exception as exc:  # pragma: no cover - defensive
+                self.logger.warning("Failed to load plan.json at %s: %s", plan_path, exc)
+
+        self._plan_cache[cache_key] = (context, premise)
+        return context, premise
+
+    def _prompt_with_context(
+        self,
+        shot: Shot,
+        plan_context: Dict[int, Dict[str, str]],
+        premise: Optional[str],
+    ) -> str:
+        parts = [shot.prompt]
+        context = plan_context.get(shot.frame_id, {})
+
+        narration = context.get("narration")
+        if narration:
+            parts.append(f"Story narration: {narration}")
+
+        beat = context.get("beat")
+        if beat:
+            parts.append(f"Scene focus: {beat}")
+
+        if premise:
+            parts.append(f"Overall premise: {premise}")
+
+        prompt = " ".join(part.strip() for part in parts if part and part.strip())
+        return prompt if prompt else shot.prompt
 
     def _frame_seed(self, base_seed: int, offset: int) -> int:
         return base_seed + offset * 997
@@ -76,11 +131,14 @@ class StoryboardGenerationPipeline:
         started = io_utils.timestamp()
         previous_image = None
         frames: List[FrameEntry] = []
+        plan_context, plan_premise = self._load_plan_context(output_dir)
 
         # Check if ConsiStory integration is enabled
         if self.config.get("consistency", {}).get("use_consistory", False):
             self.logger.info("Using ConsiStory for consistent multi-frame generation.")
-            prompts = [shot.prompt for shot in shots]
+            prompts = [
+                self._prompt_with_context(shot, plan_context, plan_premise) for shot in shots
+            ]
             params = ConsiStoryParams(
                 model_id=self.config.get("model", {}).get("model_id", "stabilityai/stable-diffusion-xl-base-1.0"),
                 width=self.config.get("model", {}).get("width", 1024),
@@ -108,7 +166,7 @@ class StoryboardGenerationPipeline:
                         frame_id=shot.frame_id,
                         filename=frame_filename,
                         caption=shot.caption,
-                        prompt=shot.prompt,
+                        prompt=prompts[i],
                         seed=base_seed + i,
                         control=FrameControl(),
                         identity_ref=IdentityRef(used=True, type="consistory"),
@@ -128,6 +186,7 @@ class StoryboardGenerationPipeline:
         # Default per-frame generation
         for index, shot in enumerate(shots):
             frame_seed = self._frame_seed(base_seed, index)
+            prompt_text = self._prompt_with_context(shot, plan_context, plan_premise)
 
             # ControlNet for structural/compositional guidance only - no img2img
             # Identity consistency relies on consistent character descriptions in prompts
@@ -167,7 +226,7 @@ class StoryboardGenerationPipeline:
             # Use txt2img with ControlNet for all frames
             # No img2img - identity preserved through consistent prompts + light ControlNet guidance
             image = self.engine.generate(
-                prompt=shot.prompt,
+                prompt=prompt_text,
                 seed=frame_seed,
                 **control_kwargs,
             )
@@ -184,7 +243,7 @@ class StoryboardGenerationPipeline:
                     frame_id=shot.frame_id,
                     filename=frame_filename,
                     caption=shot.caption,
-                    prompt=shot.prompt,
+                    prompt=prompt_text,
                     seed=frame_seed,
                     control=control_flags,
                     identity_ref=IdentityRef(
