@@ -14,12 +14,21 @@ const formatTimestamp = (iso: string | null) => {
   }
 
   try {
-    return new Date(iso).toLocaleString([], {
+    const original = new Date(iso);
+    if (Number.isNaN(original.getTime())) {
+      return iso;
+    }
+
+    const utcPlusFive = new Date(original.getTime() + 5 * 60 * 60 * 1000);
+    const formatted = utcPlusFive.toLocaleString([], {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false
     });
+
+    return `${formatted} UTC+5`;
   } catch {
     return iso;
   }

@@ -239,7 +239,7 @@ export const useChat = (): UseChatResult => {
   }, []);
 
   const pollJobUntilComplete = useCallback(async (jobId: string): Promise<ApiJob> => {
-    const maxAttempts = 120; // 2 minutes max (120 * 1000ms)
+    const maxAttempts = 300; // 2 minutes max (120 * 1000ms)
     const pollInterval = 1000; // 1 second
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {

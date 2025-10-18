@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 MessageRole = Literal["user", "assistant"]
 AttachmentType = Literal["image"]
@@ -12,7 +12,7 @@ AttachmentType = Literal["image"]
 
 class AttachmentBase(BaseModel):
     type: AttachmentType = Field(default="image", description="Attachment type")
-    url: HttpUrl = Field(description="Public URL to the attachment resource")
+    url: AnyHttpUrl = Field(description="Public URL to the attachment resource")
     alt: str = Field(description="Accessible description for the attachment")
 
 
