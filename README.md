@@ -4,7 +4,7 @@
 ## Docker Quickstart
 
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
 The command starts both services:

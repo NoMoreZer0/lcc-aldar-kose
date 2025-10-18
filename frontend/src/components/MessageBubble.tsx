@@ -1,3 +1,4 @@
+import { CinematicCarousel } from './CinematicCarousel';
 import type { ChatMessage, MessageAttachment } from '../types';
 
 interface MessageBubbleProps {
@@ -10,16 +11,12 @@ const roleLabel: Record<ChatMessage['role'], string> = {
 };
 
 const renderAttachment = (attachment: MessageAttachment, index: number) => {
-  if (attachment.type === 'image') {
-    return (
-      <figure key={`${attachment.url}-${index}`} className="message-bubble__attachment">
-        <img src={attachment.url} alt={attachment.alt} loading="lazy" />
-        <figcaption>{attachment.alt}</figcaption>
-      </figure>
-    );
-  }
-
-  return null;
+  return attachment.type === 'image' ? (
+    <figure key={`${attachment.url}-${index}`} className="message-bubble__attachment">
+      <img src={attachment.url} alt={attachment.alt} loading="lazy" />
+      <figcaption>{attachment.alt}</figcaption>
+    </figure>
+  ) : null;
 };
 
 export const MessageBubble = ({ message }: MessageBubbleProps) => {
@@ -42,11 +39,15 @@ export const MessageBubble = ({ message }: MessageBubbleProps) => {
           <p key={index}>{line}</p>
         ))}
       </div>
-      {message.attachments && message.attachments.length > 0 && (
-        <div className="message-bubble__attachments" aria-label="Attachments">
-          {message.attachments.map(renderAttachment)}
-        </div>
-      )}
+      {message.attachments && message.attachments.length > 0 ? (
+        message.role === 'assistant' ? (
+          <CinematicCarousel frames={message.attachments} title="Storyboard sequence" />
+        ) : (
+          <div className="message-bubble__attachments" aria-label="Attachments">
+            {message.attachments.map(renderAttachment)}
+          </div>
+        )
+      ) : null}
     </article>
   );
 };

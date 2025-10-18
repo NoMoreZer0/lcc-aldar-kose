@@ -309,6 +309,130 @@ button {
   background: rgba(8, 12, 22, 0.8);
 }
 
+.cinematic-carousel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 0.75rem;
+}
+
+.cinematic-carousel__viewport {
+  position: relative;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(79, 110, 180, 0.35);
+  background: rgba(11, 16, 29, 0.85);
+  aspect-ratio: 16 / 9;
+}
+
+.cinematic-carousel__viewport img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cinematic-carousel__overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.1rem;
+  background: linear-gradient(0deg, rgba(8, 12, 22, 0.85), rgba(8, 12, 22, 0));
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+
+.cinematic-carousel__indicator {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c7d2fe;
+}
+
+.cinematic-carousel__alt {
+  margin-left: auto;
+  color: #e0e7ff;
+  opacity: 0.9;
+  text-align: right;
+}
+
+.cinematic-carousel__control {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 245, 0.35);
+  background: rgba(8, 12, 22, 0.75);
+  color: #e0e7ff;
+  font-size: 1.8rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.cinematic-carousel__control:hover {
+  transform: translateY(-50%) scale(1.05);
+  background: rgba(79, 110, 241, 0.55);
+}
+
+.cinematic-carousel__control:focus-visible {
+  outline: 2px solid rgba(147, 197, 253, 0.8);
+  outline-offset: 2px;
+}
+
+.cinematic-carousel__control--prev {
+  left: 0.75rem;
+}
+
+.cinematic-carousel__control--next {
+  right: 0.75rem;
+}
+
+.cinematic-carousel__thumbnails {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.cinematic-carousel__thumb {
+  position: relative;
+  padding: 0;
+  border: none;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  background: transparent;
+}
+
+.cinematic-carousel__thumb img {
+  display: block;
+  width: 96px;
+  height: 60px;
+  object-fit: cover;
+}
+
+.cinematic-carousel__thumb:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.cinematic-carousel__thumb--active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.6);
+}
+
 .message-bubble--loading {
   align-self: flex-start;
   background: rgba(20, 26, 44, 0.8);
