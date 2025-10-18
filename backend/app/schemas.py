@@ -78,3 +78,35 @@ class ChatRead(ChatBase):
 
     class Config:
         orm_mode = True
+
+
+JobStatusType = Literal["pending", "processing", "completed", "failed"]
+
+
+class JobCreate(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    num_frames: int = Field(default=8, ge=6, le=10)
+
+
+class JobUpdate(BaseModel):
+    status: Optional[JobStatusType] = None
+    progress: Optional[int] = Field(None, ge=0, le=100)
+    result_urls: Optional[List[str]] = None
+    error_message: Optional[str] = None
+
+
+class JobRead(BaseModel):
+    id: UUID
+    chat_id: UUID
+    prompt: str
+    status: JobStatusType
+    progress: int
+    result_urls: Optional[List[str]] = None
+    error_message: Optional[str] = None
+    num_frames: int
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True

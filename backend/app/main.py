@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .api.router import api_router
 from .database import init_database
@@ -21,6 +25,10 @@ def create_application() -> FastAPI:
     )
 
     app.include_router(api_router, prefix="/api")
+
+    uploads_dir = Path(os.getenv("UPLOADS_DIR", "uploads"))
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
     @app.on_event("startup")
     def startup_event() -> None:
