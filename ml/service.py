@@ -160,8 +160,7 @@ async def run_generation(request: GenerationRequest) -> None:
             logline=request.prompt,
             shots=shots,
             output_dir=output_dir,
-            use_ip_adapter=config_model.model.get("use_ip_adapter", False),
-            use_controlnet=config_model.model.get("use_controlnet", False),
+            use_controlnet=config_model.model.get("use_controlnet", True),
             base_seed=base_seed,
         )
 
