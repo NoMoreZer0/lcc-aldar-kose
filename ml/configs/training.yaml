@@ -1,0 +1,223 @@
+# Training Configuration for SDXL Diffusion Model Finetuning
+
+# Model configuration
+model:
+  # Base pretrained model to finetune
+  base_model_id: "stabilityai/stable-diffusion-xl-base-1.0"
+  # Whether to finetune the entire UNet or use parameter-efficient methods
+  finetune_method: "lora"  # Options: "full", "lora", "dreambooth"
+  # Resolution for training (SDXL supports 1024x1024)
+  resolution: 1024
+  # Enable gradient checkpointing to save memory
+  gradient_checkpointing: true
+  # Enable xformers memory efficient attention
+  enable_xformers: true
+  # VAE model (can use external VAE for better quality)
+  vae_model_id: null  # null means use default from base_model
+
+# LoRA specific configuration (when finetune_method = "lora")
+lora:
+  # Rank of LoRA adaptation layers
+  rank: 64
+  # Alpha parameter for LoRA scaling
+  alpha: 64
+  # Target modules to apply LoRA
+  target_modules:
+    - "to_q"
+    - "to_k"
+    - "to_v"
+    - "to_out.0"
+    - "add_k_proj"
+    - "add_v_proj"
+  # Dropout for LoRA layers
+  dropout: 0.0
+  # Bias configuration
+  bias: "none"  # Options: "none", "all", "lora_only"
+
+# Dataset configuration
+dataset:
+  # Training data directory (should contain images and metadata)
+  train_data_dir: "data/train"
+  # Validation data directory
+  val_data_dir: "data/val"
+  # Metadata file format (jsonl, csv, or parquet)
+  metadata_format: "jsonl"
+  # Metadata file name
+  metadata_file: "metadata.jsonl"
+  # Image column name in metadata
+  image_column: "image_path"
+  # Caption/prompt column name in metadata
+  caption_column: "prompt"
+  # Conditioning image column (for ControlNet training)
+  conditioning_column: null
+  # Maximum caption length (tokens)
+  max_caption_length: 77
+  # Number of worker processes for data loading
+  num_workers: 4
+  # Pin memory for faster GPU transfer
+  pin_memory: true
+  # Cache latents to disk to speed up training
+  cache_latents: false
+  # Preprocessing settings
+  preprocessing:
+    # Center crop images
+    center_crop: true
+    # Random horizontal flip probability
+    random_flip: 0.5
+    # Color jitter (brightness, contrast, saturation, hue)
+    color_jitter: null
+    # Normalization mean and std
+    normalize: true
+
+# Training hyperparameters
+training:
+  # Output directory for checkpoints and logs
+  output_dir: "output/training"
+  # Random seed for reproducibility
+  seed: 42
+  # Batch size per GPU
+  train_batch_size: 1
+  # Validation batch size
+  val_batch_size: 1
+  # Gradient accumulation steps
+  gradient_accumulation_steps: 4
+  # Number of training epochs
+  num_epochs: 100
+  # Maximum training steps (overrides num_epochs if set)
+  max_train_steps: null
+  # Learning rate
+  learning_rate: 1.0e-4
+  # Learning rate scheduler
+  lr_scheduler: "constant_with_warmup"  # Options: "constant", "constant_with_warmup", "cosine", "linear"
+  # Number of warmup steps
+  lr_warmup_steps: 500
+  # Adam beta1
+  adam_beta1: 0.9
+  # Adam beta2
+  adam_beta2: 0.999
+  # Adam weight decay
+  adam_weight_decay: 1.0e-2
+  # Adam epsilon
+  adam_epsilon: 1.0e-8
+  # Maximum gradient norm for clipping
+  max_grad_norm: 1.0
+  # Use 8-bit Adam optimizer (requires bitsandbytes)
+  use_8bit_adam: false
+  # Mixed precision training
+  mixed_precision: "fp16"  # Options: "no", "fp16", "bf16"
+  # Enable CPU offloading to save GPU memory
+  enable_cpu_offload: false
+  # Noise offset for training (improves contrast)
+  noise_offset: 0.0
+  # SNR gamma for loss weighting (min-SNR strategy)
+  snr_gamma: null
+  # Prediction type
+  prediction_type: "epsilon"  # Options: "epsilon", "v_prediction"
+
+# Exponential Moving Average (EMA)
+ema:
+  # Use EMA for model weights
+  use_ema: true
+  # EMA decay rate
+  decay: 0.9999
+  # Start EMA after N steps
+  start_step: 0
+
+# Checkpointing
+checkpointing:
+  # Save checkpoint every N steps
+  save_steps: 500
+  # Keep only the last N checkpoints
+  keep_last_n_checkpoints: 5
+  # Save best checkpoint based on validation metric
+  save_best: true
+  # Metric to monitor for best checkpoint
+  best_metric: "val_loss"
+  # Whether higher is better for the metric
+  higher_is_better: false
+  # Resume training from checkpoint path
+  resume_from_checkpoint: null
+
+# Validation
+validation:
+  # Run validation every N steps
+  validation_steps: 500
+  # Number of validation samples to generate
+  num_validation_samples: 4
+  # Validation inference steps
+  num_inference_steps: 30
+  # Guidance scale for validation
+  guidance_scale: 7.5
+  # Validation prompts (null means use from validation dataset)
+  validation_prompts: null
+
+# Logging
+logging:
+  # Logging directory
+  log_dir: "logs"
+  # Log every N steps
+  log_steps: 10
+  # Use Weights & Biases
+  use_wandb: false
+  # W&B project name
+  wandb_project: "sdxl-finetuning"
+  # W&B run name
+  wandb_run_name: null
+  # Use TensorBoard
+  use_tensorboard: true
+  # Report to (options: "tensorboard", "wandb", "all")
+  report_to: "tensorboard"
+
+# Distributed training
+distributed:
+  # Enable distributed data parallel
+  enable_ddp: false
+  # Backend for distributed training
+  backend: "nccl"
+  # Number of GPUs
+  num_gpus: 1
+  # Number of nodes
+  num_nodes: 1
+  # Node rank
+  node_rank: 0
+  # Master address
+  master_addr: "localhost"
+  # Master port
+  master_port: "12355"
+
+# Text encoder finetuning (advanced)
+text_encoder:
+  # Whether to train text encoder
+  train_text_encoder: false
+  # Text encoder learning rate (if different from main LR)
+  learning_rate: 5.0e-6
+  # Freeze text encoder after N steps
+  freeze_after_steps: null
+
+# Prior preservation (for DreamBooth)
+prior_preservation:
+  # Enable prior preservation loss
+  enabled: false
+  # Prior loss weight
+  weight: 1.0
+  # Class images directory
+  class_data_dir: "data/class_images"
+  # Number of class images
+  num_class_images: 200
+  # Class prompt
+  class_prompt: "a photo of person"
+
+# Custom consistency objectives (for Aldar Köse character)
+consistency:
+  # Enable identity consistency loss
+  enable_identity_loss: false
+  # Identity loss weight
+  identity_loss_weight: 0.1
+  # Face detection model for identity loss
+  face_model: "buffalo_l"
+  # Enable background consistency loss
+  enable_background_loss: false
+  # Background loss weight
+  background_loss_weight: 0.05
+  # Use LPIPS for background consistency
+  use_lpips: true
