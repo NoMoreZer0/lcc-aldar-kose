@@ -4,9 +4,7 @@
 ![](aldar.png)
 ### Colab
 
-Notebook without integrated prompt engineering
-
-[📓](txt2img_img2img_inference.ipynb)
+[📓 Notebook without integrated prompt optimizations](txt2img_img2img_inference.ipynb)
 
 ## Docker Quickstart
 
