@@ -139,7 +139,7 @@ def _fallback_plan(logline: str, n_frames: int) -> List[Shot]:
     return shots
 
 
-def plan_shots(logline: str, n_frames: int = 3) -> List[Shot]:
+def plan_shots(logline: str, n_frames: int = 3, require_openai: bool = True) -> List[Shot]:
     # if n_frames < 6 or n_frames > 10:
     #     raise ValueError("n_frames must be between 6 and 10")
     return _call_openai(logline, n_frames)

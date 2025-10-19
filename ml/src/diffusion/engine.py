@@ -4,7 +4,7 @@ import inspect
 import logging
 import os
 from dataclasses import dataclass, fields
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from huggingface_hub import constants as hf_hub_constants
@@ -231,26 +231,37 @@ class SDXLEngine:
         steps = steps or self.cfg.steps
         guidance = guidance or self.cfg.guidance
 
-        cond_embeds, pooled_embeds = self._build_conditioning_tensors(prompt)
-        neg_cond_embeds: Optional[torch.Tensor] = None
-        neg_pooled_embeds: Optional[torch.Tensor] = None
-        if negative_prompt:
-            neg_cond_embeds, neg_pooled_embeds = self._build_conditioning_tensors(negative_prompt)
+        conditioning = self._build_conditioning_tensors(prompt)
+        neg_conditioning = self._build_conditioning_tensors(negative_prompt) if negative_prompt else None
+
+        use_compel = conditioning is not None and conditioning[0] is not None and conditioning[1] is not None
 
         pipeline = self.txt2img
-        kwargs: Dict[str, Any] = {
-            "prompt_embeds": cond_embeds,
-            "pooled_prompt_embeds": pooled_embeds,
-            "num_inference_steps": steps,
-            "guidance_scale": guidance,
-            "width": width,
-            "height": height,
-            "generator": generator,
-        }
+        if use_compel:
+            cond_embeds, pooled_embeds = conditioning  # type: ignore[misc]
+            kwargs: Dict[str, Any] = {
+                "prompt_embeds": cond_embeds,
+                "pooled_prompt_embeds": pooled_embeds,
+                "num_inference_steps": steps,
+                "guidance_scale": guidance,
+                "width": width,
+                "height": height,
+                "generator": generator,
+            }
 
-        if neg_cond_embeds is not None and neg_pooled_embeds is not None:
-            kwargs["negative_prompt_embeds"] = neg_cond_embeds
-            kwargs["negative_pooled_prompt_embeds"] = neg_pooled_embeds
+            if neg_conditioning and neg_conditioning[0] is not None and neg_conditioning[1] is not None:
+                kwargs["negative_prompt_embeds"] = neg_conditioning[0]
+                kwargs["negative_pooled_prompt_embeds"] = neg_conditioning[1]
+        else:
+            kwargs = {
+                "prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "num_inference_steps": steps,
+                "guidance_scale": guidance,
+                "width": width,
+                "height": height,
+                "generator": generator,
+            }
 
         if img2img_start is not None:
             pipeline = self.img2img
@@ -295,8 +306,19 @@ class SDXLEngine:
 
     def _build_conditioning_tensors(
         self, prompt: Optional[str]
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        if not prompt:
-            empty, pooled = self.compel.build_conditioning_tensor("")
-            return empty, pooled
-        return self.compel.build_conditioning_tensor(prompt)
+    ) -> Optional[Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]]:
+        if not prompt or self.compel is None:
+            return None
+        try:
+            conditioning = self.compel.build_conditioning_tensor(prompt)
+        except Exception:
+            self.logger.debug("Compel failed to encode prompt; falling back to raw text", exc_info=True)
+            return None
+
+        if isinstance(conditioning, tuple) and len(conditioning) == 2:
+            return conditioning  # type: ignore[return-value]
+
+        if isinstance(conditioning, torch.Tensor):
+            return conditioning, None
+
+        return None

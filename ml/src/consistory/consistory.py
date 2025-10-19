@@ -23,7 +23,7 @@ import math
 import os
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 import torch
 from PIL import Image
@@ -254,26 +254,43 @@ class ConsiStoryGenerator:
         # Select pipeline (txt2img vs img2img) based on identity init
         use_img2img = self.params.identity_image is not None
         pipe = self.img2img if use_img2img else self.txt2img
-        prompt_embeds, pooled_embeds = self._build_embeddings(list(prompts))
-        pipe_kwargs = dict(
-            prompt_embeds=prompt_embeds,
-            pooled_prompt_embeds=pooled_embeds,
-            width=self.params.width,
-            height=self.params.height,
-            num_inference_steps=self.params.steps,
-            guidance_scale=self.params.guidance,
-            generator=generator,
-            callback=callback,
-            callback_steps=1,
-        )
+        conditioning = self._build_embeddings(list(prompts))
+        use_compel = conditioning is not None and conditioning[0] is not None and conditioning[1] is not None
 
-        if neg is not None:
-            neg_list = [neg] * batch if isinstance(neg, str) else list(neg)
-            if len(neg_list) != batch:
-                raise ValueError("negative_prompt length must match prompts length")
-            neg_embeds, neg_pooled = self._build_embeddings(neg_list)
-            pipe_kwargs["negative_prompt_embeds"] = neg_embeds
-            pipe_kwargs["negative_pooled_prompt_embeds"] = neg_pooled
+        if use_compel:
+            prompt_embeds, pooled_embeds = conditioning  # type: ignore[misc]
+            pipe_kwargs = dict(
+                prompt_embeds=prompt_embeds,
+                pooled_prompt_embeds=pooled_embeds,
+                width=self.params.width,
+                height=self.params.height,
+                num_inference_steps=self.params.steps,
+                guidance_scale=self.params.guidance,
+                generator=generator,
+                callback=callback,
+                callback_steps=1,
+            )
+
+            if neg is not None:
+                neg_list = [neg] * batch if isinstance(neg, str) else list(neg)
+                if len(neg_list) != batch:
+                    raise ValueError("negative_prompt length must match prompts length")
+                neg_embeds_tuple = self._build_embeddings(neg_list)
+                if neg_embeds_tuple and neg_embeds_tuple[0] is not None and neg_embeds_tuple[1] is not None:
+                    pipe_kwargs["negative_prompt_embeds"] = neg_embeds_tuple[0]
+                    pipe_kwargs["negative_pooled_prompt_embeds"] = neg_embeds_tuple[1]
+        else:
+            pipe_kwargs = dict(
+                prompt=list(prompts),
+                negative_prompt=[neg] * batch if isinstance(neg, str) else neg,
+                width=self.params.width,
+                height=self.params.height,
+                num_inference_steps=self.params.steps,
+                guidance_scale=self.params.guidance,
+                generator=generator,
+                callback=callback,
+                callback_steps=1,
+            )
 
         # Optional identity init: replicate init image per frame
         if use_img2img:
@@ -303,8 +320,22 @@ class ConsiStoryGenerator:
 
         return images
 
-    def _build_embeddings(self, prompts: Sequence[str]) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.compel.build_conditioning_tensor(list(prompts))
+    def _build_embeddings(self, prompts: Sequence[str]) -> Optional[Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]]:
+        if not prompts:
+            return None
+        try:
+            conditioning = self.compel.build_conditioning_tensor(list(prompts))
+        except Exception:
+            self.logger.debug("Compel failed to encode prompts; falling back to raw text", exc_info=True)
+            return None
+
+        if isinstance(conditioning, tuple) and len(conditioning) == 2:
+            return conditioning  # type: ignore[return-value]
+
+        if isinstance(conditioning, torch.Tensor):
+            return conditioning, None
+
+        return None
 
 
 # -----------------------------
