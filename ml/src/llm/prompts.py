@@ -12,7 +12,7 @@ Strong requirements:
 - Each frame must push the story forward (setup → rising action → twist/climax → resolution).
 - Each NEW frame introduces at least ONE meaningful dynamic change (interaction, expression, prop usage, animal behavior,
   storytelling beat) while the environment and static objects stay anchored.
-- Prompts must be concise (aim less than 50 words) and free of tokens like <|endoftext|>. Start each prompt with a short environment tag such as
+- Prompts must be concise (aim that overall prompt is less than 50 words) and free of tokens like <|endoftext|>. Start each prompt with a short environment tag such as
   "Kazakh steppe encampment; static props intact" before describing the dynamic change.
 - Safety: no violence glorification; respectful portrayals; no ethnic caricature.
 
@@ -67,7 +67,7 @@ Return a JSON array of length {num_frames}. Each item has:
 {{
   "frame_id": <int 1..{num_frames}>,
   "caption": "<1 concise sentence>",
-  "prompt": "<rich but compact image prompt that includes {aldar_token} and the canonical description>",
+  "prompt": "<rich but compact image prompt that includes {aldar_token} and the canonical description that should not exceed 50 words>",
   "camera_direction": "<from allowed set of camera directions>",
   "style_tag": "<from allowed set> of style tags",
   "new_element": "<dynamic action/prop/interaction that changes while environment stays the same>",
