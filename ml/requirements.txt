@@ -3,6 +3,7 @@ transformers>=4.36.2
 accelerate>=0.25.0
 xformers>=0.0.22.post7
 torch>=2.1.0
+torchvision>=0.16.0
 open-clip-torch>=2.24.0
 opencv-python>=4.8.0.76
 controlnet-aux>=0.0.7
@@ -23,3 +24,11 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 httpx==0.25.2
 compel>=2.0.1
+
+# Training dependencies
+peft>=0.7.0              # Parameter-Efficient Fine-Tuning (LoRA support)
+bitsandbytes>=0.41.0     # 8-bit optimizers
+safetensors>=0.4.0       # Safe tensor serialization
+tensorboard>=2.15.0      # TensorBoard logging
+wandb>=0.16.0            # Weights & Biases logging (optional)
+datasets>=2.15.0         # HuggingFace datasets library
