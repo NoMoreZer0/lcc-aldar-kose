@@ -196,6 +196,9 @@ def apply_lora(
             dropout=dropout,
         )
 
+        # Move LoRA layer to same device as base layer
+        lora_linear = lora_linear.to(module.weight.device, dtype=module.weight.dtype)
+
         # Replace module
         setattr(parent, attr_name, lora_linear)
         logger.debug(f"Replaced {name} with LoRA layer (rank={rank})")

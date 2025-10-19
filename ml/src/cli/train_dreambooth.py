@@ -66,7 +66,7 @@ class DreamBoothDataset(Dataset):
             instance_prompt: Prompt for instance images (e.g., "a photo of sks aldar")
             class_data_root: Directory with class images (prior preservation)
             class_prompt: Prompt for class images (e.g., "a photo of a person")
-            tokenizer: CLIP tokenizer
+            tokenizer: CLIP tokenizer (used for both SDXL text encoders)
             size: Image size
             center_crop: Whether to center crop
         """
@@ -467,12 +467,39 @@ def main():
             # Add noise
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-            # Get text embeddings
+            # Get text embeddings from both SDXL encoders
             with torch.no_grad() if not args.train_text_encoder else torch.enable_grad():
-                encoder_hidden_states = text_encoder(instance_prompt_ids)[0]
+                # First text encoder (CLIP ViT-L)
+                prompt_embeds_1 = text_encoder(instance_prompt_ids, output_hidden_states=True)
+                pooled_prompt_embeds_1 = prompt_embeds_1[0]
 
-            # Predict noise
-            model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
+                # Second text encoder (CLIP ViT-G) - provides pooled embeddings
+                prompt_embeds_2 = text_encoder_2(instance_prompt_ids, output_hidden_states=True)
+                pooled_prompt_embeds_2 = prompt_embeds_2.text_embeds
+
+                # Concatenate hidden states from both encoders
+                encoder_hidden_states = torch.cat([pooled_prompt_embeds_1, prompt_embeds_2.hidden_states[-2]], dim=-1)
+
+                # SDXL requires add_time_ids for original size, crops, and target size
+                # Format: [original_height, original_width, crop_top, crop_left, target_height, target_width]
+                add_time_ids = torch.tensor([
+                    [args.resolution, args.resolution, 0, 0, args.resolution, args.resolution]
+                ], dtype=torch.float16 if args.mixed_precision == "fp16" else torch.float32).repeat(batch_size, 1).to(device)
+
+                # Create added conditioning kwargs for SDXL
+                added_cond_kwargs = {
+                    "text_embeds": pooled_prompt_embeds_2,
+                    "time_ids": add_time_ids
+                }
+
+            # Predict noise with SDXL conditioning
+            model_pred = unet(
+                noisy_latents,
+                timesteps,
+                encoder_hidden_states,
+                added_cond_kwargs=added_cond_kwargs,
+                return_dict=False
+            )[0]
 
             # Calculate loss
             loss = F.mse_loss(model_pred.float(), noise.float(), reduction="mean")
@@ -496,10 +523,34 @@ def main():
                 noisy_class_latents = noise_scheduler.add_noise(class_latents, class_noise, class_timesteps)
 
                 with torch.no_grad() if not args.train_text_encoder else torch.enable_grad():
-                    class_encoder_hidden_states = text_encoder(class_prompt_ids)[0]
+                    # First text encoder (CLIP ViT-L)
+                    class_prompt_embeds_1 = text_encoder(class_prompt_ids, output_hidden_states=True)
+                    class_pooled_prompt_embeds_1 = class_prompt_embeds_1[0]
+
+                    # Second text encoder (CLIP ViT-G) - provides pooled embeddings
+                    class_prompt_embeds_2 = text_encoder_2(class_prompt_ids, output_hidden_states=True)
+                    class_pooled_prompt_embeds_2 = class_prompt_embeds_2.text_embeds
+
+                    # Concatenate hidden states from both encoders
+                    class_encoder_hidden_states = torch.cat([class_pooled_prompt_embeds_1, class_prompt_embeds_2.hidden_states[-2]], dim=-1)
+
+                    # Create time IDs for class images
+                    class_add_time_ids = torch.tensor([
+                        [args.resolution, args.resolution, 0, 0, args.resolution, args.resolution]
+                    ], dtype=torch.float16 if args.mixed_precision == "fp16" else torch.float32).repeat(class_latents.shape[0], 1).to(device)
+
+                    # Create added conditioning kwargs for class images
+                    class_added_cond_kwargs = {
+                        "text_embeds": class_pooled_prompt_embeds_2,
+                        "time_ids": class_add_time_ids
+                    }
 
                 class_model_pred = unet(
-                    noisy_class_latents, class_timesteps, class_encoder_hidden_states, return_dict=False
+                    noisy_class_latents,
+                    class_timesteps,
+                    class_encoder_hidden_states,
+                    added_cond_kwargs=class_added_cond_kwargs,
+                    return_dict=False
                 )[0]
 
                 prior_loss = F.mse_loss(class_model_pred.float(), class_noise.float(), reduction="mean")

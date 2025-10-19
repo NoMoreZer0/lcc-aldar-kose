@@ -1,24 +1,29 @@
 #!/bin/bash
-# Example: Train SDXL DreamBooth LoRA for Aldar Köse character
+# Example: Train SDXL DreamBooth LoRA for Aldar Kose character
 #
 # This script demonstrates how to train a character-specific model
-# for consistent generation of Aldar Köse across storyboard frames.
+# for consistent generation of Aldar Kose across storyboard frames.
 #
 # Prerequisites:
-# 1. Prepare 10-30 images of Aldar Köse in data/train/aldar_kose/
+# 1. Prepare 10-30 images of Aldar Kose in /root/lcc-aldar-kose/data/train/aldar_kose/
+#    Or use the example photos in ml/examples/aldar_kose_photos/
 # 2. Install dependencies: pip install -r requirements.txt
 # 3. Have at least 16GB GPU VRAM (or use memory optimizations below)
+# 4. Run this script from anywhere - it will automatically find the repo root
 
 set -e  # Exit on error
+
+# Get repository root directory (relative to this script location)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Configuration
 MODEL_ID="stabilityai/stable-diffusion-xl-base-1.0"
 VAE_ID="madebyollin/sdxl-vae-fp16-fix"
-INSTANCE_DIR="data/train/aldar_kose"
-OUTPUT_DIR="output/aldar_kose_lora"
-INSTANCE_PROMPT="a photo of sks aldar"
+INSTANCE_DIR="${SCRIPT_DIR}/ml/data/train"
+OUTPUT_DIR="${SCRIPT_DIR}/ml/data/output/aldar_kose_lora/"
+INSTANCE_PROMPT="a photo of Aldar Kose"
 CLASS_PROMPT="a photo of a person"
-CLASS_DIR="data/class_images"
+CLASS_DIR="${SCRIPT_DIR}/ml/data/class_images/"
 
 # Training parameters
 RESOLUTION=1024
@@ -29,10 +34,10 @@ GRAD_ACCUM=4
 LORA_RANK=64
 
 # Validation
-VALIDATION_PROMPT="a portrait of sks aldar wearing traditional kazakh chapan and kalpak, cinematic lighting"
+VALIDATION_PROMPT="a portrait of Aldar Kose wearing traditional kazakh chapan and kalpak, cinematic lighting"
 VALIDATION_STEPS=100
 
-echo "=== Training Aldar Köse DreamBooth LoRA ==="
+echo "=== Training Aldar Kose DreamBooth LoRA ==="
 echo "Instance images: $INSTANCE_DIR"
 echo "Output: $OUTPUT_DIR"
 echo "Training steps: $TRAIN_STEPS"
@@ -41,7 +46,7 @@ echo ""
 # Check if instance images exist
 if [ ! -d "$INSTANCE_DIR" ]; then
     echo "Error: Instance directory not found: $INSTANCE_DIR"
-    echo "Please create it and add 10-30 images of Aldar Köse"
+    echo "Please create it and add 10-30 images of Aldar Kose"
     exit 1
 fi
 
@@ -56,6 +61,9 @@ if [ "$NUM_IMAGES" -lt 5 ]; then
 else
     echo "Found $NUM_IMAGES instance images ✓"
 fi
+
+# Change to repository root to ensure Python module imports work correctly
+cd "$SCRIPT_DIR"
 
 # Generate class images for prior preservation (optional but recommended)
 if [ ! -d "$CLASS_DIR" ] || [ $(ls -1 "$CLASS_DIR"/*.png 2>/dev/null | wc -l) -lt 100 ]; then
