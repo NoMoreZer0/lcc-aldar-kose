@@ -23,7 +23,7 @@ import math
 import os
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
 from PIL import Image
@@ -179,12 +179,14 @@ class ConsiStoryGenerator:
         self.device, self.dtype = _device_dtype()
         self.logger.info("Loading SDXL model: %s", params.model_id)
         self.txt2img, self.img2img = _load_pipelines(params.model_id, self.device, self.dtype)
-        self.compel = Compel(
-            tokenizer=[self.txt2img.tokenizer, getattr(self.txt2img, "tokenizer_2", self.txt2img.tokenizer)],
-            text_encoder=[self.txt2img.text_encoder, getattr(self.txt2img, "text_encoder_2", self.txt2img.text_encoder)],
-            returned_embeddings_type=ReturnedEmbeddingsType.SDXL,
-            device=self.device,
-        )
+        compel_kwargs = {
+            "tokenizer": [self.txt2img.tokenizer, getattr(self.txt2img, "tokenizer_2", self.txt2img.tokenizer)],
+            "text_encoder": [self.txt2img.text_encoder, getattr(self.txt2img, "text_encoder_2", self.txt2img.text_encoder)],
+            "device": self.device,
+        }
+        if hasattr(ReturnedEmbeddingsType, "SDXL"):
+            compel_kwargs["returned_embeddings_type"] = ReturnedEmbeddingsType.SDXL
+        self.compel = Compel(**compel_kwargs)
 
     def _make_ctx(self, batch_size: int) -> SharedAttentionContext:
         cfg = SharedAttentionConfig(

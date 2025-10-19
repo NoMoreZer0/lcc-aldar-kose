@@ -68,12 +68,14 @@ class SDXLEngine:
         self.txt2img.scheduler = DPMSolverMultistepScheduler.from_config(self.txt2img.scheduler.config)
         self.dtype = next(self.txt2img.unet.parameters()).dtype
 
-        self.compel = Compel(
-            tokenizer=[self.txt2img.tokenizer, getattr(self.txt2img, "tokenizer_2", self.txt2img.tokenizer)],
-            text_encoder=[self.txt2img.text_encoder, getattr(self.txt2img, "text_encoder_2", self.txt2img.text_encoder)],
-            returned_embeddings_type=ReturnedEmbeddingsType.SDXL,
-            device=self.device,
-        )
+        compel_kwargs: Dict[str, Any] = {
+            "tokenizer": [self.txt2img.tokenizer, getattr(self.txt2img, "tokenizer_2", self.txt2img.tokenizer)],
+            "text_encoder": [self.txt2img.text_encoder, getattr(self.txt2img, "text_encoder_2", self.txt2img.text_encoder)],
+            "device": self.device,
+        }
+        if hasattr(ReturnedEmbeddingsType, "SDXL"):
+            compel_kwargs["returned_embeddings_type"] = ReturnedEmbeddingsType.SDXL
+        self.compel = Compel(**compel_kwargs)
 
         img_signature = inspect.signature(StableDiffusionXLImg2ImgPipeline.__init__).parameters
         img_components = {
