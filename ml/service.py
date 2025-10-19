@@ -140,8 +140,8 @@ async def run_generation(request: GenerationRequest) -> None:
         )
         config_dict = config_dict | {
             "consistency": {
-                "use_consistory": True,
-                "use_img2img": False,
+                "use_consistory": False,
+                "use_img2img": True,
                 "img2img_strength": 0.6,
             }
         }
