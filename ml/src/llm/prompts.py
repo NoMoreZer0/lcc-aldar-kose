@@ -59,7 +59,6 @@ Hard rules:
 - Each shot MUST introduce at least ONE new dynamic element compared to previous shots:
   (supporting character action, emotional beat, gesture, wind movement, animal behavior, use of a prop, storytelling flourish) while the static set stays fixed.
 - Vary camera_direction and style_tag across frames (no immediate repeats).
-- Keep each prompt < 60 tokens. Begin with a compact environment tag like "Kazakh steppe encampment; static props intact."
 - After the tag, describe ONLY the dynamic change, the cinematic view (camera, lens, composition), lighting shift, and mood.
 - Highlight Kazakh folk culture details, textiles, motifs, instruments, and oral storytelling energy.
 
@@ -67,7 +66,7 @@ Return a JSON array of length {num_frames}. Each item has:
 {{
   "frame_id": <int 1..{num_frames}>,
   "caption": "<1 concise sentence>",
-  "prompt": "<rich but compact image prompt that includes {aldar_token} and the canonical description that should not exceed 50 words>",
+  "prompt": "<rich but compact image prompt that includes {aldar_token}>",
   "camera_direction": "<from allowed set of camera directions>",
   "style_tag": "<from allowed set> of style tags",
   "new_element": "<dynamic action/prop/interaction that changes while environment stays the same>",
