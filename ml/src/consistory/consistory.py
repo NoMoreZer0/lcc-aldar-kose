@@ -333,9 +333,25 @@ class ConsiStoryGenerator:
             return conditioning  # type: ignore[return-value]
 
         if isinstance(conditioning, torch.Tensor):
-            return conditioning, None
+            pooled = self._compute_pooled_embedding(prompts)
+            return conditioning, pooled
 
         return None
+
+    def _compute_pooled_embedding(self, prompts: Sequence[str]) -> Optional[torch.Tensor]:
+        if not prompts:
+            return None
+        try:
+            _, _, pooled, _ = self.txt2img._encode_prompt(
+                prompt=list(prompts),
+                device=self.device,
+                num_images_per_prompt=1,
+                do_classifier_free_guidance=False,
+            )
+            return pooled
+        except Exception:
+            self.logger.debug("Failed to compute pooled embedding via pipeline", exc_info=True)
+            return None
 
 
 # -----------------------------

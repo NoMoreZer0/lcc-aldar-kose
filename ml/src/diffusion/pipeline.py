@@ -76,28 +76,29 @@ class StoryboardGenerationPipeline:
         self._plan_cache[cache_key] = (context, premise)
         return context, premise
 
-    def _prompt_with_context(
+    def _build_prompt_components(
         self,
         shot: Shot,
         plan_context: Dict[int, Dict[str, str]],
         premise: Optional[str],
-    ) -> str:
-        parts = [shot.prompt]
+    ) -> Tuple[str, List[str]]:
+        base_prompt = shot.prompt.strip()
+        supplemental: List[str] = []
+
         context = plan_context.get(shot.frame_id, {})
 
-        narration = context.get("narration")
+        narration = (context.get("narration") or "").strip()
         if narration:
-            parts.append(f"Story narration: {narration}")
+            supplemental.append(f"Story narration: {narration}")
 
-        beat = context.get("beat")
+        beat = (context.get("beat") or "").strip()
         if beat:
-            parts.append(f"Scene focus: {beat}")
+            supplemental.append(f"Scene focus: {beat}")
 
         if premise:
-            parts.append(f"Overall premise: {premise}")
+            supplemental.append(f"Overall premise: {premise.strip()}")
 
-        prompt = " ".join(part.strip() for part in parts if part and part.strip())
-        return prompt if prompt else shot.prompt
+        return base_prompt, supplemental
 
     def _frame_seed(self, base_seed: int, offset: int) -> int:
         return base_seed + offset * 997
@@ -136,9 +137,10 @@ class StoryboardGenerationPipeline:
         # Check if ConsiStory integration is enabled
         if self.config.get("consistency", {}).get("use_consistory", False):
             self.logger.info("Using ConsiStory for consistent multi-frame generation.")
-            prompts = [
-                self._prompt_with_context(shot, plan_context, plan_premise) for shot in shots
+            prompt_components = [
+                self._build_prompt_components(shot, plan_context, plan_premise) for shot in shots
             ]
+            prompts = [base for base, _ in prompt_components]
             params = ConsiStoryParams(
                 model_id=self.config.get("model", {}).get("model_id", "stabilityai/stable-diffusion-xl-base-1.0"),
                 width=self.config.get("model", {}).get("width", 1024),
@@ -159,6 +161,7 @@ class StoryboardGenerationPipeline:
             images = gen.generate_frames(prompts)
 
             for i, (shot, img) in enumerate(zip(shots, images)):
+                base_prompt, supplemental = prompt_components[i]
                 frame_filename = f"frame_{shot.frame_id:02d}.png"
                 io_utils.save_image(img, output_dir / frame_filename)
                 frames.append(
@@ -166,7 +169,7 @@ class StoryboardGenerationPipeline:
                         frame_id=shot.frame_id,
                         filename=frame_filename,
                         caption=shot.caption,
-                        prompt=prompts[i],
+                        prompt=self._merge_prompt_text(base_prompt, supplemental),
                         seed=base_seed + i,
                         control=FrameControl(),
                         identity_ref=IdentityRef(used=True, type="consistory"),
@@ -184,9 +187,15 @@ class StoryboardGenerationPipeline:
             return payload
 
         # Default per-frame generation
+        prompt_cache: Dict[int, Tuple[str, List[str]]] = {}
+
         for index, shot in enumerate(shots):
             frame_seed = self._frame_seed(base_seed, index)
-            prompt_text = self._prompt_with_context(shot, plan_context, plan_premise)
+            base_prompt, supplemental = prompt_cache.setdefault(
+                shot.frame_id,
+                self._build_prompt_components(shot, plan_context, plan_premise),
+            )
+            prompt_text = self._merge_prompt_text(base_prompt, supplemental)
 
             # ControlNet for structural/compositional guidance only - no img2img
             # Identity consistency relies on consistent character descriptions in prompts
@@ -226,7 +235,7 @@ class StoryboardGenerationPipeline:
             # Use txt2img with ControlNet for all frames
             # No img2img - identity preserved through consistent prompts + light ControlNet guidance
             image = self.engine.generate(
-                prompt=prompt_text,
+                prompt=base_prompt,
                 seed=frame_seed,
                 **control_kwargs,
             )
@@ -270,3 +279,10 @@ class StoryboardGenerationPipeline:
             timestamps={"started": started, "finished": io_utils.timestamp()},
         )
         return payload
+
+    @staticmethod
+    def _merge_prompt_text(base_prompt: str, supplemental: List[str]) -> str:
+        if not supplemental:
+            return base_prompt
+        tail = " \n".join(part for part in supplemental if part)
+        return f"{base_prompt}\n{tail}".strip()
