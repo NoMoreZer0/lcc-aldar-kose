@@ -142,6 +142,7 @@ async def run_generation(request: GenerationRequest) -> None:
             "consistency": {
                 "use_consistory": True,
                 "use_img2img": True,
+                "img2img_strength": 0.6,
             }
         }
 
