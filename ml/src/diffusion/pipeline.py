@@ -188,6 +188,8 @@ class StoryboardGenerationPipeline:
 
         # Default per-frame generation
         prompt_cache: Dict[int, Tuple[str, List[str]]] = {}
+        use_img2img = self.config.get("consistency", {}).get("use_img2img", False)
+        img2img_strength = self.config.get("consistency", {}).get("img2img_strength", 0.99)
 
         for index, shot in enumerate(shots):
             frame_seed = self._frame_seed(base_seed, index)
@@ -197,8 +199,8 @@ class StoryboardGenerationPipeline:
             )
             prompt_text = self._merge_prompt_text(base_prompt, supplemental)
 
-            # ControlNet for structural/compositional guidance only - no img2img
-            # Identity consistency relies on consistent character descriptions in prompts
+            # ControlNet for structural/compositional guidance (optional with img2img)
+            # Identity consistency can use img2img, ControlNet, or both
             control_kwargs: Dict[str, Any] = {}
             control_flags = FrameControl()
 
@@ -216,8 +218,10 @@ class StoryboardGenerationPipeline:
                     nets = self.control_manager.get_controlnets(control_flags.depth, control_flags.pose, control_flags.edges)
                     if nets:
                         # Light ControlNet conditioning for loose compositional guidance
-                        # Allows variation while maintaining general scene structure
+                        # When using img2img, reduce ControlNet weight for balance
                         strength_cfg = self.config.get("consistency", {}).get("controlnet_weight", 0.3)
+                        if use_img2img:
+                            strength_cfg = min(strength_cfg, 0.3)
                         if len(control_images) == 1:
                             scale_value = min(strength_cfg, 0.3)
                         else:
@@ -232,13 +236,25 @@ class StoryboardGenerationPipeline:
             else:
                 self.engine.set_controlnet(None)
 
-            # Use txt2img with ControlNet for all frames
-            # No img2img - identity preserved through consistent prompts + light ControlNet guidance
-            image = self.engine.generate(
-                prompt=base_prompt,
-                seed=frame_seed,
-                **control_kwargs,
-            )
+            # Determine generation mode
+            # Frame 1: always txt2img
+            # Frame 2+: use img2img if enabled, otherwise txt2img
+            if use_img2img and previous_image is not None and index > 0:
+                # img2img mode: use previous frame as initialization
+                image = self.engine.generate(
+                    prompt=base_prompt,
+                    seed=frame_seed,
+                    img2img_start=previous_image,
+                    strength=img2img_strength,
+                    **control_kwargs,
+                )
+            else:
+                # txt2img mode: generate from scratch
+                image = self.engine.generate(
+                    prompt=base_prompt,
+                    seed=frame_seed,
+                    **control_kwargs,
+                )
 
             frame_filename = f"frame_{shot.frame_id:02d}.png"
             io_utils.save_image(image, output_dir / frame_filename)
@@ -246,6 +262,16 @@ class StoryboardGenerationPipeline:
             if shot.frame_id == 1:
                 face_crop = crop_center(image, self.config.get("consistency", {}).get("face_crop_size", 512))
                 face_crop.save(output_dir / "identity_reference.png")
+
+            # Determine identity consistency method used
+            identity_type = "none"
+            if use_img2img and previous_image is not None and index > 0:
+                if control_kwargs:
+                    identity_type = "img2img+controlnet"
+                else:
+                    identity_type = "img2img"
+            elif control_kwargs:
+                identity_type = "controlnet"
 
             frames.append(
                 FrameEntry(
@@ -256,8 +282,8 @@ class StoryboardGenerationPipeline:
                     seed=frame_seed,
                     control=control_flags,
                     identity_ref=IdentityRef(
-                        used=bool(control_kwargs),
-                        type="controlnet" if control_kwargs else "none",
+                        used=bool(use_img2img and index > 0) or bool(control_kwargs),
+                        type=identity_type,
                     ),
                 )
             )
@@ -267,6 +293,8 @@ class StoryboardGenerationPipeline:
         metrics = self.evaluator.evaluate_sequence(output_dir)
 
         adapters = []
+        if use_img2img:
+            adapters.append("img2img")
         if use_controlnet and self.control_manager is not None:
             adapters.append("controlnet")
 

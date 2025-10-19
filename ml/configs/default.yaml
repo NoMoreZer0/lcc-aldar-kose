@@ -13,7 +13,8 @@ model:
     edge_path: null
 consistency:
   seed: 12345
-  img2img_strength: 0.55
+  use_img2img: false
+  img2img_strength: 0.9
   face_crop_size: 512
   controlnet_weight: 0.9
   controlnet_use:

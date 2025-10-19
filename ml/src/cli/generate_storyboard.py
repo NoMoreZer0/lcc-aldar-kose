@@ -20,7 +20,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=None, help="Output directory.")
     parser.add_argument("--seed", type=int, default=None, help="Base random seed.")
     parser.add_argument("--use_controlnet", action="store_true", default=True, help="Enable ControlNet/T2I adapters.")
+    parser.add_argument("--use_img2img", action="store_true", help="Enable img2img for identity consistency (overrides config).")
+    parser.add_argument("--img2img_strength", type=float, default=None, help="img2img strength 0.0-1.0 (overrides config).")
     parser.add_argument("--zip", action="store_true", help="Package outputs into a zip archive.")
+    parser.add_argument(
+        "--require_openai",
+        action="store_true",
+        default=False,
+        help="Require OpenAI for planning; if missing API key, error instead of falling back."
+    )
     return parser.parse_args()
 
 
@@ -36,6 +44,20 @@ def main() -> None:
         config_dict = config.model_dump()
     else:  # Pydantic v1 fallback
         config_dict = config.dict()
+
+    # Apply CLI overrides for img2img settings
+    if args.use_img2img:
+        if "consistency" not in config_dict:
+            config_dict["consistency"] = {}
+        config_dict["consistency"]["use_img2img"] = True
+        logger.info("img2img mode enabled via CLI")
+
+    if args.img2img_strength is not None:
+        if "consistency" not in config_dict:
+            config_dict["consistency"] = {}
+        config_dict["consistency"]["img2img_strength"] = args.img2img_strength
+        logger.info("img2img strength set to %.2f via CLI", args.img2img_strength)
+
     configure_determinism(True)
     base_seed = set_seed(args.seed)
 
