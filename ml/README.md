@@ -27,7 +27,7 @@ Outputs are written to `ml/outputs/<run_id>/frame_XX.png` along with an `index.j
 
 Run the complete pipeline with the provided notebook:
 
-[📓 Colab Inference Notebook](./notebooks/colab_inference.ipynb)
+[📓 Colab Inference Notebook](../txt2img_img2img_inference.ipynb)
 
 ### One-command demo
 
