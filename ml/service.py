@@ -138,6 +138,12 @@ async def run_generation(request: GenerationRequest) -> None:
             if hasattr(config_model, "model_dump")
             else config_model.dict()
         )
+        config_dict = config_dict | {
+            "consistency": {
+                "use_consistory": True,
+                "use_img2img": True,
+            }
+        }
 
         configure_determinism(True)
         base_seed = set_seed(None)
