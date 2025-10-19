@@ -23,7 +23,7 @@ class FrameControl(BaseModel):
 
 class IdentityRef(BaseModel):
     used: bool = False
-    type: Literal["ip-adapter", "faceid", "controlnet", "t2i-adapter", "consistory", "none"] = "none"
+    type: Literal["ip-adapter", "faceid", "controlnet", "t2i-adapter", "consistory", "img2img", "img2img+controlnet", "none"] = "none"
 
 
 class FrameEntry(BaseModel):
