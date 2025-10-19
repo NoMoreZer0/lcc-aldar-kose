@@ -2,6 +2,11 @@
 "Aldark Kose Storyboard" project from HackNU 2025
 
 ![](aldar.png)
+### Colab
+
+Notebook without integrated prompt engineering
+
+[📓](txt2img_img2img_inference.ipynb)
 
 ## Docker Quickstart
 
