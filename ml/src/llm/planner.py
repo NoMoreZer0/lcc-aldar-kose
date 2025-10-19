@@ -140,6 +140,18 @@ def _fallback_plan(logline: str, n_frames: int) -> List[Shot]:
 
 
 def plan_shots(logline: str, n_frames: int = 3, require_openai: bool = True) -> List[Shot]:
-    # if n_frames < 6 or n_frames > 10:
-    #     raise ValueError("n_frames must be between 6 and 10")
-    return _call_openai(logline, n_frames)
+    """
+    Plan shots using OpenAI when available. If require_openai is False,
+    fall back deterministically when the API key is missing or a call fails.
+    """
+    if require_openai:
+        # Strict: raise if API key missing or call fails
+        return _call_openai(logline, n_frames)
+
+    # Best-effort: try OpenAI if configured; otherwise use deterministic fallback
+    if os.getenv("OPENAI_API_KEY"):
+        try:
+            return _call_openai(logline, n_frames)
+        except Exception:
+            pass
+    return _fallback_plan(logline, n_frames)

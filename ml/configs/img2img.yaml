@@ -1,0 +1,47 @@
+# Configuration for img2img identity consistency mode
+# This config enables image-to-image generation where each frame (after frame 1)
+# is initialized from the previous frame to maintain character identity.
+
+model:
+  base_id: stabilityai/stable-diffusion-xl-base-1.0
+  use_controlnet: true  # Can combine img2img with ControlNet for best results
+  height: 1024
+  width: 1024
+  steps: 30
+  guidance: 7.5
+  negative_prompt: "low quality, out of focus, distorted anatomy, caricature"
+  controlnet:
+    union_path: null
+    depth_path: null
+    pose_path: null
+    edge_path: null
+
+consistency:
+  seed: 12345
+  # Enable img2img mode for strong identity consistency
+  use_img2img: true
+  # img2img strength controls how much to deviate from the previous frame
+  # 0.0 = exact copy of previous frame (no variation)
+  # 0.5-0.6 = balanced (recommended)
+  # 1.0 = ignore previous frame completely (defeats purpose)
+  img2img_strength: 0.99
+  face_crop_size: 512
+  # Reduce ControlNet weight when using img2img to avoid over-constraining
+  controlnet_weight: 0.3
+  controlnet_use:
+    depth: false
+    pose: false
+    edges: true  # Edge detection helps with composition
+
+thresholds:
+  identity_min: 0.85
+  ssim_min: 0.8
+  lpips_max: 0.3
+  scene_diversity_min: 0.15
+
+evaluation:
+  clip_model: "openai/clip-vit-large-patch14"
+  dreamsim_model: "kandinsky-community/dreamsim"
+
+logging:
+  level: INFO
