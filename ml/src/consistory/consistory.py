@@ -35,6 +35,8 @@ from diffusers import (
     DPMSolverMultistepScheduler,
 )
 
+from compel import Compel, ReturnedEmbeddingsType
+
 # Our cross-frame attention utilities
 from ml.src.diffusion.hooks import (
     SharedAttentionConfig,
@@ -177,6 +179,12 @@ class ConsiStoryGenerator:
         self.device, self.dtype = _device_dtype()
         self.logger.info("Loading SDXL model: %s", params.model_id)
         self.txt2img, self.img2img = _load_pipelines(params.model_id, self.device, self.dtype)
+        self.compel = Compel(
+            tokenizer=[self.txt2img.tokenizer, getattr(self.txt2img, "tokenizer_2", self.txt2img.tokenizer)],
+            text_encoder=[self.txt2img.text_encoder, getattr(self.txt2img, "text_encoder_2", self.txt2img.text_encoder)],
+            returned_embeddings_type=ReturnedEmbeddingsType.SDXL,
+            device=self.device,
+        )
 
     def _make_ctx(self, batch_size: int) -> SharedAttentionContext:
         cfg = SharedAttentionConfig(
@@ -244,9 +252,10 @@ class ConsiStoryGenerator:
         # Select pipeline (txt2img vs img2img) based on identity init
         use_img2img = self.params.identity_image is not None
         pipe = self.img2img if use_img2img else self.txt2img
+        prompt_embeds, pooled_embeds = self._build_embeddings(list(prompts))
         pipe_kwargs = dict(
-            prompt=list(prompts),
-            negative_prompt=[neg] * batch if isinstance(neg, str) else neg,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_embeds,
             width=self.params.width,
             height=self.params.height,
             num_inference_steps=self.params.steps,
@@ -255,6 +264,14 @@ class ConsiStoryGenerator:
             callback=callback,
             callback_steps=1,
         )
+
+        if neg is not None:
+            neg_list = [neg] * batch if isinstance(neg, str) else list(neg)
+            if len(neg_list) != batch:
+                raise ValueError("negative_prompt length must match prompts length")
+            neg_embeds, neg_pooled = self._build_embeddings(neg_list)
+            pipe_kwargs["negative_prompt_embeds"] = neg_embeds
+            pipe_kwargs["negative_pooled_prompt_embeds"] = neg_pooled
 
         # Optional identity init: replicate init image per frame
         if use_img2img:
@@ -283,6 +300,9 @@ class ConsiStoryGenerator:
             self.logger.info("Saved %d attention debug images to %s", len(written), save_dir)
 
         return images
+
+    def _build_embeddings(self, prompts: Sequence[str]) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.compel.build_conditioning_tensor(list(prompts))
 
 
 # -----------------------------

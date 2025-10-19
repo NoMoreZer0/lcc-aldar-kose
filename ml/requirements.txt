@@ -22,3 +22,4 @@ rich>=13.7.0
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 httpx==0.25.2
+compel>=2.0.1

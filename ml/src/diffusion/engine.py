@@ -20,6 +20,8 @@ from diffusers import (
     StableDiffusionXLPipeline,
 )
 
+from compel import Compel, ReturnedEmbeddingsType
+
 try:  # pragma: no cover - optional dependency across diffusers versions
     from diffusers import MultiControlNetModel
 except ImportError:  # pragma: no cover
@@ -65,6 +67,13 @@ class SDXLEngine:
             ).to(self.device)
         self.txt2img.scheduler = DPMSolverMultistepScheduler.from_config(self.txt2img.scheduler.config)
         self.dtype = next(self.txt2img.unet.parameters()).dtype
+
+        self.compel = Compel(
+            tokenizer=[self.txt2img.tokenizer, getattr(self.txt2img, "tokenizer_2", self.txt2img.tokenizer)],
+            text_encoder=[self.txt2img.text_encoder, getattr(self.txt2img, "text_encoder_2", self.txt2img.text_encoder)],
+            returned_embeddings_type=ReturnedEmbeddingsType.SDXL,
+            device=self.device,
+        )
 
         img_signature = inspect.signature(StableDiffusionXLImg2ImgPipeline.__init__).parameters
         img_components = {
@@ -220,16 +229,26 @@ class SDXLEngine:
         steps = steps or self.cfg.steps
         guidance = guidance or self.cfg.guidance
 
+        cond_embeds, pooled_embeds = self._build_conditioning_tensors(prompt)
+        neg_cond_embeds: Optional[torch.Tensor] = None
+        neg_pooled_embeds: Optional[torch.Tensor] = None
+        if negative_prompt:
+            neg_cond_embeds, neg_pooled_embeds = self._build_conditioning_tensors(negative_prompt)
+
         pipeline = self.txt2img
         kwargs: Dict[str, Any] = {
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
+            "prompt_embeds": cond_embeds,
+            "pooled_prompt_embeds": pooled_embeds,
             "num_inference_steps": steps,
             "guidance_scale": guidance,
             "width": width,
             "height": height,
             "generator": generator,
         }
+
+        if neg_cond_embeds is not None and neg_pooled_embeds is not None:
+            kwargs["negative_prompt_embeds"] = neg_cond_embeds
+            kwargs["negative_pooled_prompt_embeds"] = neg_pooled_embeds
 
         if img2img_start is not None:
             pipeline = self.img2img
@@ -271,3 +290,11 @@ class SDXLEngine:
         if hasattr(output, "images"):
             return output.images[0]
         return output[0]
+
+    def _build_conditioning_tensors(
+        self, prompt: Optional[str]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if not prompt:
+            empty, pooled = self.compel.build_conditioning_tensor("")
+            return empty, pooled
+        return self.compel.build_conditioning_tensor(prompt)
